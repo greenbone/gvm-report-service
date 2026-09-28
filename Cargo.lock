@@ -778,11 +778,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "gvmr-cli"
+name = "gvm-report-cli"
 version = "0.4.1"
 dependencies = [
  "clap",
- "gvmr-core",
+ "gvm-report-core",
  "thiserror",
  "tokio",
  "tracing",
@@ -790,7 +790,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gvmr-core"
+name = "gvm-report-core"
 version = "0.4.1"
 dependencies = [
  "async-trait",
@@ -809,14 +809,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "gvmr-server"
+name = "gvm-report-server"
 version = "0.4.1"
 dependencies = [
  "async-trait",
  "axum",
  "config",
  "dotenvy",
- "gvmr-core",
+ "gvm-report-core",
  "jsonwebtoken",
  "quick-xml",
  "serde",

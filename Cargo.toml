@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/gvmr-core",
-    "crates/gvmr-server",
-    "crates/gvmr-cli",
+    "crates/gvm-report-core",
+    "crates/gvm-report-server",
+    "crates/gvm-report-cli",
 ]
 resolver = "2"
 

@@ -26,12 +26,12 @@ help:
 	@echo "gvmr-lite-rs Make targets:"
 	@echo ""
 	@echo "  make check          cargo check --workspace --all-targets"
-	@echo "  make check-core     check gvmr-core"
-	@echo "  make check-server   check gvmr-server"
-	@echo "  make check-cli      check gvmr-cli"
+	@echo "  make check-core     check gvm-report-core"
+	@echo "  make check-server   check gvm-report-server"
+	@echo "  make check-cli      check gvm-report-cli"
 	@echo ""
-	@echo "  make run-server     run gvmr-server"
-	@echo "  make run-cli        run gvmr-cli (default: --help)"
+	@echo "  make run-server     run gvm-report-server"
+	@echo "  make run-cli        run gvm-report-cli (default: --help)"
 	@echo "  make run-cli CLI_ARGS='--xml report.xml --type native -o report.pdf'"
 	@echo ""
 	@echo "  make test           cargo test --workspace --all-targets"
@@ -54,31 +54,31 @@ check:
 
 check-core:
 	$(CARGO) check \
-		-p gvmr-core \
+		-p gvm-report-core \
 		--all-targets \
 		--color always
 
 check-server:
 	$(CARGO) check \
-		-p gvmr-server \
+		-p gvm-report-server \
 		--all-targets \
 		--color always
 
 check-cli:
 	$(CARGO) check \
-		-p gvmr-cli \
+		-p gvm-report-cli \
 		--all-targets \
 		--color always
 
 run-server:
 	$(CARGO) run \
-		-p gvmr-server \
+		-p gvm-report-server \
 		--color always \
 		-- $(SERVER_ARGS)
 
 run-cli:
 	$(CARGO) run \
-		-p gvmr-cli \
+		-p gvm-report-cli \
 		--color always \
 		-- $(CLI_ARGS)
 

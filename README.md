@@ -1,4 +1,6 @@
-# gvmr-lite-rs
+![Greenbone Logo](https://www.greenbone.net/wp-content/uploads/gb_new-logo_horizontal_rgb_small.png)
+
+# gvm-report-service
 
 A lightweight Rust REST service for discovering, caching, and rendering GVM report formats.
 
@@ -16,7 +18,6 @@ The project focuses on:
 ![CI](https://github.com/ozgen/gvmr-lite-rs/actions/workflows/ci.yml/badge.svg)
 ![Lint](https://github.com/ozgen/gvmr-lite-rs/actions/workflows/lint.yml/badge.svg)
 ![Format](https://github.com/ozgen/gvmr-lite-rs/actions/workflows/fmt.yml/badge.svg)
-[![codecov](https://codecov.io/gh/ozgen/gvmr-lite-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/ozgen/gvmr-lite-rs)
 
 ---
 
