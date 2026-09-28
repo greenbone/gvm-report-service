@@ -102,6 +102,13 @@ cover:
 		--html \
 		--open
 
+install-llvm-cov:
+	$(CARGO)  install --locked cargo-llvm-cov
+
+coverage: install-llvm-cov
+	$(CARGO)  llvm-cov --locked --all-targets --html --output-dir target/coverage
+	$(CARGO)  llvm-cov report --locked --lcov --output-path target/coverage/lcov.info
+
 clippy:
 	$(CARGO) clippy \
 		--workspace \
