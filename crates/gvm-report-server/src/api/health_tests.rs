@@ -12,7 +12,7 @@ use crate::{
 };
 
 use crate::config::settings::{AuthMode, Settings};
-use gvmr_core::service::format_cache::FormatCache;
+use gvm_report_core::service::format_cache::FormatCache;
 
 fn unique_test_dir(name: &str) -> PathBuf {
     let nanos = SystemTime::now()

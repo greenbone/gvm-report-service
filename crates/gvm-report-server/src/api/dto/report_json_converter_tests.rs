@@ -3,7 +3,7 @@ use serde_json::{Map, Value, json};
 
 use super::*;
 use crate::api::dto::render as dto;
-use gvmr_core::{
+use gvm_report_core::{
     domain::report_model::DeltaState, service::report_xml_builder::build_report_xml,
     xml::report_validator::parse_report_xml_flexible,
 };
@@ -106,7 +106,7 @@ fn report_json_to_envelope_maps_delta_fields() {
 
     assert_eq!(
         result_delta.state(),
-        Some(gvmr_core::domain::report_model::DeltaState::Changed)
+        Some(gvm_report_core::domain::report_model::DeltaState::Changed)
     );
     assert_eq!(
         result_delta

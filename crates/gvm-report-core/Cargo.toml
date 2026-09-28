@@ -1,5 +1,5 @@
 [package]
-name = "gvmr-core"
+name = "gvm-report-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

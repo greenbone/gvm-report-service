@@ -16,7 +16,7 @@ use tower::util::ServiceExt;
 use crate::{app::state::AppState, auth::context::AuthContext};
 
 use crate::config::settings::{AuthMode, Settings};
-use gvmr_core::service::format_cache::FormatCache;
+use gvm_report_core::service::format_cache::FormatCache;
 
 async fn protected_handler(
     axum::extract::Extension(ctx): axum::extract::Extension<AuthContext>,

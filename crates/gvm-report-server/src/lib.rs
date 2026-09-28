@@ -7,7 +7,7 @@ pub mod telemetry;
 use std::net::SocketAddr;
 
 use config::settings::Settings;
-use gvmr_core::service::format_cache::FormatCache;
+use gvm_report_core::service::format_cache::FormatCache;
 use tokio::net::TcpListener;
 use tracing::{Instrument, info};
 

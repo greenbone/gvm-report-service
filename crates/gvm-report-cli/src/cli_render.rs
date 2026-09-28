@@ -4,7 +4,7 @@ use tracing::info;
 
 use crate::{cli::CliRendererType, error::CliError};
 
-use gvmr_core::{
+use gvm_report_core::{
     domain::report_format_constants::{
         BUILT_IN_NATIVE_PDF_COMPLIANCE_ID, BUILT_IN_NATIVE_PDF_TECHNICAL_ID,
     },
@@ -64,7 +64,7 @@ pub fn render_xml_file(
 
 fn render_native_pdf(
     format_id: &str,
-    report: &gvmr_core::domain::report_model::ReportEnvelope,
+    report: &gvm_report_core::domain::report_model::ReportEnvelope,
 ) -> Result<Vec<u8>, CliError> {
     match format_id {
         BUILT_IN_NATIVE_PDF_TECHNICAL_ID | BUILT_IN_NATIVE_PDF_COMPLIANCE_ID => {

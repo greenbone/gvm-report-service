@@ -1,4 +1,4 @@
-use gvmr_core::domain::report_format::{
+use gvm_report_core::domain::report_format::{
     RendererBackend, ReportFormat, ReportFormatFile, ReportFormatSource,
 };
 use std::path::PathBuf;

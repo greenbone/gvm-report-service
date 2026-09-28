@@ -2,7 +2,7 @@ use serde_json::{Map, Value};
 
 use crate::api::dto::render as dto;
 
-use gvmr_core::domain::report_model as domain;
+use gvm_report_core::domain::report_model as domain;
 
 pub fn report_json_to_envelope(report_json: &dto::ReportJson) -> domain::ReportEnvelope {
     domain::ReportEnvelope {

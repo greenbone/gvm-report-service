@@ -22,7 +22,7 @@ use crate::{
     auth::{context::AuthContext, scope::require_scope},
 };
 
-use gvmr_core::{
+use gvm_report_core::{
     domain::{
         report_format::{RendererBackend, ReportFormat},
         report_model::ReportEnvelope,

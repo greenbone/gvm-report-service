@@ -1,7 +1,7 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use gvmr_core::domain::report_format::ReportFormat;
+use gvm_report_core::domain::report_format::ReportFormat;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ReportFormatFileResponse {

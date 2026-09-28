@@ -1,15 +1,15 @@
 [package]
-name = "gvmr-server"
+name = "gvm-report-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "gvmr-server"
+name = "gvm-report-server"
 path = "src/main.rs"
 
 [dependencies]
-gvmr-core = { path = "../gvmr-core", features = ["test-utils"] }
+gvm-report-core = { path = "../gvm-report-core", features = ["test-utils"] }
 
 async-trait.workspace = true
 axum.workspace = true

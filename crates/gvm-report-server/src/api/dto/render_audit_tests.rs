@@ -1,7 +1,7 @@
 // render_audit_tests.rs
 
 use super::*;
-use gvmr_core::{
+use gvm_report_core::{
     domain::report_model::DeltaState,
     service::audit::audit_report_json_xml_builder::build_audit_report_xml_from_json,
     xml::report_validator::parse_report_xml_flexible,

@@ -1,15 +1,15 @@
 [package]
-name = "gvmr-cli"
+name = "gvm-report-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "gvmr-cli"
+name = "gvm-report-cli"
 path = "src/main.rs"
 
 [dependencies]
-gvmr-core = { path = "../gvmr-core" }
+gvm-report-core = { path = "../gvm-report-core" }
 
 clap.workspace = true
 thiserror.workspace = true

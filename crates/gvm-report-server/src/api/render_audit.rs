@@ -19,7 +19,7 @@ use crate::{
     auth::{context::AuthContext, scope::require_scope},
 };
 
-use gvmr_core::{
+use gvm_report_core::{
     domain::{
         report_format::{RendererBackend, ReportFormat},
         report_format_constants::BUILT_IN_NATIVE_PDF_COMPLIANCE_ID,

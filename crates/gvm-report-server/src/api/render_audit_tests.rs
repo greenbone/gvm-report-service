@@ -30,7 +30,7 @@ use crate::{
     config::settings::{AuthMode, Settings},
 };
 
-use gvmr_core::{
+use gvm_report_core::{
     domain::{
         report_format::{ReportFormat, ReportFormatFile},
         report_format_constants::{

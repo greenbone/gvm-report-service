@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::config::settings::Settings;
-use gvmr_core::service::{
+use gvm_report_core::service::{
     audit::AuditReportRenderer, format_cache::FormatCache,
     json_report_renderer::JsonReportRenderer, native_pdf::NativePdfRenderer,
     report_renderer::ReportRenderer, typst::renderer::TypstReportRenderer,
