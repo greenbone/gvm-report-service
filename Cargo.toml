@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 [workspace]
 members = [
     "crates/gvm-report-core",
@@ -9,7 +13,7 @@ resolver = "2"
 [workspace.package]
 version = "0.4.1"
 edition = "2024"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
 async-trait = "0.1.89"

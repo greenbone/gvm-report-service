@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::{collections::HashMap, io, path::Path, process::Stdio, time::Duration};
 
 use tokio::{process::Command, time};

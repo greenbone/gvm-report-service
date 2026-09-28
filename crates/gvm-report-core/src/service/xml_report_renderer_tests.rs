@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use super::{XmlReportRenderer, normalize_report_xml_for_feed_pipeline};
 use crate::{
     domain::report_format::ReportFormat, infra::fs::make_executable_best_effort,

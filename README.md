@@ -259,6 +259,9 @@ When the service is running, interactive API documentation is available:
 
 ## License
 
-MIT
+Copyright © Greenbone AG
+
+Licensed under the GNU Affero General Public License v3.0 or later.
+See [LICENSE](LICENSE).
 
 ---

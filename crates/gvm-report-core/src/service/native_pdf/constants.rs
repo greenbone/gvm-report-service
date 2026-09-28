@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 pub(crate) const A4_WIDTH_MM: f64 = 210.0;
 pub(crate) const A4_HEIGHT_MM: f64 = 297.0;
 

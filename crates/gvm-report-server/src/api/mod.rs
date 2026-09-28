@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 pub mod audit_report_formats;
 pub mod debug;
 pub mod delta_audit_report_formats;

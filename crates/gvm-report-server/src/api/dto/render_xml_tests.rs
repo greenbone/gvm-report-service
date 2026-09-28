@@ -1,3 +1,8 @@
+
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use super::RenderXmlRequest;
 use serde_json::{Map, Value, json};
 

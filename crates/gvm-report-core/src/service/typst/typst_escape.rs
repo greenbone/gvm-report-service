@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 pub fn typst_text_expr(value: &str) -> String {
     format!("#text({})", typst_string_literal(value))
 }

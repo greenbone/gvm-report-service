@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use gvm_report_core::service::report_xml_builder::build_report_xml;
 use serde_json::Value;
 

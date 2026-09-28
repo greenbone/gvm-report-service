@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use crate::config::settings::AuthMode;
 use crate::{api::error::ApiError, auth::context::AuthContext};
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 edition = "2024"
 max_width = 100
 reorder_imports = true
