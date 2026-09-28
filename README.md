@@ -13,14 +13,6 @@ The project focuses on:
 
 ---
 
-## Build status
-
-![CI](https://github.com/ozgen/gvmr-lite-rs/actions/workflows/ci.yml/badge.svg)
-![Lint](https://github.com/ozgen/gvmr-lite-rs/actions/workflows/lint.yml/badge.svg)
-![Format](https://github.com/ozgen/gvmr-lite-rs/actions/workflows/fmt.yml/badge.svg)
-
----
-
 ## Documentation
 
 - [Environment Variables](./docs/ENVIRONMENT_VARIABLES.md)
