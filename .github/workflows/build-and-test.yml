@@ -40,7 +40,7 @@ jobs:
         with:
           rust-version: stable
       - name: Run Rust linter
-        run: make lint
+        run: make clippy
 
   format-check:
     name: Format Check
@@ -52,7 +52,7 @@ jobs:
         with:
           rust-version: stable
       - name: Check code formatting
-        run: make check-format
+        run: make fmt
 
   coverage:
     name: Coverage Report
