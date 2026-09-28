@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use fpdf::{Pdf, Unit};
 
 use crate::service::pdf_renderer_helper::clean_text;

@@ -1,4 +1,6 @@
-// render_audit_tests.rs
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::*;
 use gvm_report_core::{

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use crate::{
     domain::report_model::ReportEnvelope, service::native_pdf::renderer::NativePdfRenderer,
     xml::report_validator::parse_report_xml_flexible,

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use super::{get_delta_report_format, get_delta_report_formats, sync_delta_report_formats};
 
 use std::{

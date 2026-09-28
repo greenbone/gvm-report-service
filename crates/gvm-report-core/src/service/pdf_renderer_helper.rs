@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 pub fn severity_color(threat: &str) -> (u8, u8, u8) {
     match threat.trim().to_ascii_lowercase().as_str() {
         "critical" => (139, 0, 0),

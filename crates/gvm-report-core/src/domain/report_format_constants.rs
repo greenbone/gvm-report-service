@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 pub const DISCARDED_REPORT_FORMAT_IDS: &[&str] = &[
     "77bd6c4a-1f62-11e1-abf0-406186ea4fc5",
     "ccc03c9e-d52c-4078-9b49-a7a6817a3a36",

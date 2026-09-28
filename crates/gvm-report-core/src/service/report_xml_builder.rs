@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use crate::domain::report_xml_constants::{
     FORCE_TEXT_TAGS, HOST_KEY_ORDER, REPORT_KEY_ORDER, RESULT_KEY_ORDER, SPECIAL_KEYS,
 };

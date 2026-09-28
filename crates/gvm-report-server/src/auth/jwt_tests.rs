@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use super::*;
 use crate::config::settings::{AuthMode, Settings};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};

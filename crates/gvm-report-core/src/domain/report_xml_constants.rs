@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 pub const SPECIAL_KEYS: &[&str] = &["@attrs", "#text"];
 pub const FORCE_TEXT_TAGS: &[&str] = &["description", "term"];
 

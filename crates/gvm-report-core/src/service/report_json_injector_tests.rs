@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use crate::service::report_json_injector::inject_graph_gen_fields;
 
 use serde_json::json;
