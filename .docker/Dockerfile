@@ -34,13 +34,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo.toml Cargo.lock ./
-COPY crates/gvmr-core/Cargo.toml crates/gvmr-core/Cargo.toml
-COPY crates/gvmr-server/Cargo.toml crates/gvmr-server/Cargo.toml
-COPY crates/gvmr-cli/Cargo.toml crates/gvmr-cli/Cargo.toml
+COPY crates/gvm-report-core/Cargo.toml crates/gvm-report-core/Cargo.toml
+COPY crates/gvm-report-server/Cargo.toml crates/gvm-report-server/Cargo.toml
+COPY crates/gvm-report-cli/Cargo.toml crates/gvm-report-cli/Cargo.toml
 
 COPY crates crates
 
-RUN cargo build --release -p gvmr-server --bin gvmr-server
+RUN cargo build --release -p gvm-report-server --bin gvm-report-server
 
 
 FROM debian:bookworm-slim AS runtime
@@ -68,12 +68,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --no-cache-dir --break-system-packages pycha
 
 RUN useradd -m -u 10001 gvmr \
-    && mkdir -p /tmp/gvmr-lite/work \
-    && chown -R gvmr:gvmr /tmp/gvmr-lite
+    && mkdir -p /tmp/gvmr/work \
+    && chown -R gvmr:gvmr /tmp/gvmr
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/gvmr-server /usr/local/bin/gvmr-server
+COPY --from=builder /app/target/release/gvm-report-server /usr/local/bin/gvm-report-server
 COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
 COPY templates /app/templates
 
@@ -81,4 +81,4 @@ USER gvmr
 
 EXPOSE 8084
 
-ENTRYPOINT ["/usr/local/bin/gvmr-server"]
+ENTRYPOINT ["/usr/local/bin/gvm-report-server"]

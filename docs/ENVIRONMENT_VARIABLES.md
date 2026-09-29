@@ -10,7 +10,7 @@ All configuration variables use the `GVMR_` prefix.
 | ------------------------------ | ----------------------------------------------: | -------------------------------------------------------------------- |
 | `GVMR_PORT`                    |                                          `8084` | HTTP server port                                                     |
 | `GVMR_REPORT_FORMATS_FEED_DIR` | `/var/lib/gvm/data-objects/gvmd/report-formats` | Source directory containing report format files and related assets   |
-| `GVMR_WORK_DIR`                |                           `/tmp/gvmr-lite/work` | Working directory used by the service                                |
+| `GVMR_WORK_DIR`                |                                `/tmp/gvmr/work` | Working directory used by the service                                |
 | `GVMR_REBUILD_ON_START`        |                                          `true` | Rebuild or rematerialize cached report formats on startup            |
 | `GVMR_MAX_BODY_BYTES`          |                                   `536,870,912` | Maximum accepted HTTP request body size in bytes (512 mb)            |
 | `GVMR_EXPERIMENTAL_ENABLED`    |                                         `false` | Enable experimental built-in Rust renderers such as Typst/native PDF |
@@ -62,7 +62,7 @@ GVMR_AUTH_MODE=jwt
 | Variable                      |     Default | Description                            |
 | ----------------------------- | ----------: | -------------------------------------- |
 | `GVMR_JWT_SECRET`             |   _(empty)_ | Shared secret for HS256 JWT validation |
-| `GVMR_JWT_AUDIENCE`           | `gvmr-lite` | Expected JWT audience (`aud`)          |
+| `GVMR_JWT_AUDIENCE`           |      `gvmr` | Expected JWT audience (`aud`)          |
 | `GVMR_JWT_ISSUER`             | `gvmd-lite` | Expected JWT issuer (`iss`)            |
 | `GVMR_JWT_CLOCK_SKEW_SECONDS` |       `300` | Allowed clock skew in seconds          |
 
@@ -105,7 +105,7 @@ GVMR_PORT=8084
 
 # Paths
 GVMR_REPORT_FORMATS_FEED_DIR=/opt/gvm/var_community/lib/gvm/data-objects/gvmd/report-formats
-GVMR_WORK_DIR=/tmp/gvmr-lite/work
+GVMR_WORK_DIR=/tmp/gvmr/work
 
 # Startup
 GVMR_REBUILD_ON_START=true

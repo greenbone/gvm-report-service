@@ -99,10 +99,10 @@ impl Settings {
                 "report_formats_feed_dir",
                 "/var/lib/gvm/data-objects/gvmd/report-formats",
             )?
-            .set_default("work_dir", "/tmp/gvmr-lite/work")?
+            .set_default("work_dir", "/tmp/gvmr/work")?
             .set_default("auth_mode", "none")?
             .set_default("api_key_header", "X-API-Key")?
-            .set_default("jwt_audience", "gvmr-lite")?
+            .set_default("jwt_audience", "gvmr")?
             .set_default("jwt_issuer", "gvmd-lite")?
             .set_default("jwt_clock_skew_seconds", 300)?
             .set_default("required_scope_render", "render")?

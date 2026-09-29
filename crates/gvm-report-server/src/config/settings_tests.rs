@@ -126,10 +126,10 @@ fn config_builder_provides_expected_defaults() {
         settings.report_formats_feed_dir,
         PathBuf::from("/var/lib/gvm/data-objects/gvmd/report-formats")
     );
-    assert_eq!(settings.work_dir, PathBuf::from("/tmp/gvmr-lite/work"));
+    assert_eq!(settings.work_dir, PathBuf::from("/tmp/gvmr/work"));
     assert_eq!(settings.auth_mode, AuthMode::None);
     assert_eq!(settings.api_key_header, "X-API-Key");
-    assert_eq!(settings.jwt_audience, "gvmr-lite");
+    assert_eq!(settings.jwt_audience, "gvmr");
     assert_eq!(settings.jwt_issuer, "gvmd-lite");
     assert_eq!(settings.jwt_clock_skew_seconds, 300);
     assert_eq!(settings.required_scope_render, "render");
