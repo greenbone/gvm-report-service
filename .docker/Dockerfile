@@ -1,7 +1,10 @@
 FROM debian:bookworm-slim AS typst
 
 ARG TARGETARCH
-ARG TYPST_VERSION=0.14.0
+ARG TYPST_VERSION=0.14.2
+
+ARG TYPST_SHA256_AMD64
+ARG TYPST_SHA256_ARM64
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -11,19 +14,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN case "$TARGETARCH" in \
-      amd64) TYPST_ARCH="x86_64-unknown-linux-musl" ;; \
-      arm64) TYPST_ARCH="aarch64-unknown-linux-musl" ;; \
-      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+      amd64) \
+        TYPST_ARCH="x86_64-unknown-linux-musl"; \
+        TYPST_SHA256="$TYPST_SHA256_AMD64" \
+        ;; \
+      arm64) \
+        TYPST_ARCH="aarch64-unknown-linux-musl"; \
+        TYPST_SHA256="$TYPST_SHA256_ARM64" \
+        ;; \
+      *) \
+        echo "unsupported TARGETARCH=$TARGETARCH" >&2; \
+        exit 1 \
+        ;; \
     esac \
+    && test -n "$TYPST_SHA256" \
     && curl -fsSL \
       "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${TYPST_ARCH}.tar.xz" \
       -o /tmp/typst.tar.xz \
+    && echo "${TYPST_SHA256}  /tmp/typst.tar.xz" | sha256sum -c - \
     && mkdir -p /tmp/typst \
     && tar -xJf /tmp/typst.tar.xz -C /tmp/typst --strip-components=1 \
-    && install -m 0755 /tmp/typst/typst /usr/local/bin/typst
+    && install -m 0755 /tmp/typst/typst /usr/local/bin/typst \
+    && rm -rf /tmp/typst /tmp/typst.tar.xz
 
 
-FROM rust:1.88-bookworm AS builder
+FROM rust:bookworm AS builder
 
 WORKDIR /app
 
@@ -73,8 +88,14 @@ RUN useradd -m -u 10001 gvmr \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/gvm-report-server /usr/local/bin/gvm-report-server
-COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
+COPY --from=builder \
+    /app/target/release/gvm-report-server \
+    /usr/local/bin/gvm-report-server
+
+COPY --from=typst \
+    /usr/local/bin/typst \
+    /usr/local/bin/typst
+
 COPY templates /app/templates
 
 USER gvmr
