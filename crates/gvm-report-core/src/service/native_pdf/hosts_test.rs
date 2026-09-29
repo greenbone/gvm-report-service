@@ -1,0 +1,689 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+use fpdf::Pdf;
+
+use crate::{
+    domain::report_model::ReportEnvelope,
+    service::native_pdf::document::NativePdfDocument,
+    service::report_view::{ReportTargetKind, grouped_threats},
+    xml::report_validator::parse_report_xml_flexible,
+};
+
+use super::{group_results_by_threat, shorten_image_display_name};
+
+fn parse_report(xml: &str) -> ReportEnvelope {
+    parse_report_xml_flexible(xml).expect("test report XML should parse")
+}
+
+fn host_report() -> ReportEnvelope {
+    parse_report(
+        r#"
+        <report>
+            <report id="inner-report-id">
+                <scan_run_status>Done</scan_run_status>
+
+                <host>
+                    <ip>192.0.2.10</ip>
+                    <start>2024-01-02T03:04:05Z</start>
+                    <end>2024-01-02T04:04:05Z</end>
+                    <detail>
+                        <name>hostname</name>
+                        <value>host-a.example.test</value>
+                    </detail>
+                </host>
+
+                <host>
+                    <ip>192.0.2.20</ip>
+                    <start>2024-01-03T03:04:05Z</start>
+                    <end>2024-01-03T04:04:05Z</end>
+                    <detail>
+                        <name>hostname</name>
+                        <value>host-b.example.test</value>
+                    </detail>
+                </host>
+
+                <results>
+                    <result id="result-1">
+                        <host>192.0.2.10</host>
+                        <port>80/tcp</port>
+                        <name>Finding A</name>
+                        <threat>High</threat>
+                        <severity>8.0</severity>
+                    </result>
+                    <result id="result-2">
+                        <host>192.0.2.10</host>
+                        <port>443/tcp</port>
+                        <name>Finding B</name>
+                        <threat>Medium</threat>
+                        <severity>5.0</severity>
+                    </result>
+                    <result id="result-3">
+                        <host>192.0.2.20</host>
+                        <port>22/tcp</port>
+                        <name>Finding C</name>
+                        <threat>Low</threat>
+                        <severity>2.0</severity>
+                    </result>
+                </results>
+            </report>
+        </report>
+        "#,
+    )
+}
+
+fn container_image_report() -> ReportEnvelope {
+    parse_report(
+        r#"
+        <report>
+            <report id="inner-report-id">
+                <scan_run_status>Done</scan_run_status>
+
+                <task>
+                    <oci_image_target id="oci-target-id">
+                        <name>Container Image Target</name>
+                    </oci_image_target>
+                </task>
+
+                <host>
+                    <ip>sha256:first-digest</ip>
+                    <detail>
+                        <name>Architecture</name>
+                        <value>amd64</value>
+                    </detail>
+                </host>
+
+                <results>
+                    <result id="result-1">
+                        <host>sha256:first-digest</host>
+                        <name>Finding A</name>
+                        <threat>Low</threat>
+                        <severity>2.0</severity>
+                        <oci_image>
+                            <name>registry.example.test/team/app:1.0</name>
+                            <digest>sha256:first-digest</digest>
+                            <registry>registry.example.test</registry>
+                            <path>team/app</path>
+                            <short_name>app:1.0</short_name>
+                        </oci_image>
+                    </result>
+                    <result id="result-2">
+                        <host>sha256:first-digest</host>
+                        <name>Finding B</name>
+                        <threat>Critical</threat>
+                        <severity>10.0</severity>
+                        <oci_image>
+                            <name>registry.example.test/team/app:1.0</name>
+                            <digest>sha256:first-digest</digest>
+                            <registry>registry.example.test</registry>
+                            <path>team/app</path>
+                            <short_name>app:1.0</short_name>
+                        </oci_image>
+                    </result>
+                    <result id="result-3">
+                        <host>sha256:first-digest</host>
+                        <name>Finding C</name>
+                        <threat>Medium</threat>
+                        <severity>5.0</severity>
+                        <oci_image>
+                            <name>registry.example.test/team/app:1.0</name>
+                            <digest>sha256:first-digest</digest>
+                            <registry>registry.example.test</registry>
+                            <path>team/app</path>
+                            <short_name>app:1.0</short_name>
+                        </oci_image>
+                    </result>
+                    <result id="result-4">
+                        <host>sha256:first-digest</host>
+                        <name>Finding D</name>
+                        <threat>Custom</threat>
+                        <severity>1.0</severity>
+                        <oci_image>
+                            <name>registry.example.test/team/app:1.0</name>
+                            <digest>sha256:first-digest</digest>
+                            <registry>registry.example.test</registry>
+                            <path>team/app</path>
+                            <short_name>app:1.0</short_name>
+                        </oci_image>
+                    </result>
+                </results>
+            </report>
+        </report>
+        "#,
+    )
+}
+
+fn delta_report(delta: &str) -> ReportEnvelope {
+    parse_report(&format!(
+        r#"
+        <report>
+            <report id="delta-report" type="delta">
+                <scan_run_status>Done</scan_run_status>
+                <host>
+                    <ip>192.0.2.10</ip>
+                </host>
+                <results>
+                    <result id="result-1">
+                        <host>192.0.2.10</host>
+                        <name>Delta finding</name>
+                        <threat>High</threat>
+                        <severity>8.0</severity>
+                        {delta}
+                    </result>
+                </results>
+            </report>
+        </report>
+        "#
+    ))
+}
+
+fn changed_delta_report(previous: Option<&str>, diff: Option<&str>) -> ReportEnvelope {
+    let previous = previous
+        .map(|value| {
+            format!(
+                r#"
+                <result id="previous-result">
+                    <name>{value}</name>
+                    <threat>High</threat>
+                    <severity>7.0</severity>
+                </result>
+                "#
+            )
+        })
+        .unwrap_or_default();
+    let diff = diff
+        .map(|value| format!("<diff>{value}</diff>"))
+        .unwrap_or_default();
+
+    delta_report(&format!("<delta>changed{previous}{diff}</delta>"))
+}
+
+fn render_results(report: &ReportEnvelope) -> NativePdfDocument<'_> {
+    let mut document = NativePdfDocument::new(report);
+    document.write_results_per_host();
+    document
+}
+
+#[test]
+fn grouped_threats_returns_known_threats_in_priority_order() {
+    let report = container_image_report();
+    let results = &report.report.results.as_ref().unwrap().result;
+
+    let threats = grouped_threats(results);
+
+    assert_eq!(threats, vec!["Critical", "Medium", "Low", "Custom"]);
+}
+
+#[test]
+fn grouped_threats_returns_each_threat_once() {
+    let report = parse_report(
+        r#"
+        <report>
+            <report id="inner-report-id">
+                <scan_run_status>Done</scan_run_status>
+                <results>
+                    <result id="result-1">
+                        <host>image</host>
+                        <name>Finding A</name>
+                        <threat>High</threat>
+                    </result>
+                    <result id="result-2">
+                        <host>image</host>
+                        <name>Finding B</name>
+                        <threat>High</threat>
+                    </result>
+                    <result id="result-3">
+                        <host>image</host>
+                        <name>Finding C</name>
+                        <threat>Low</threat>
+                    </result>
+                </results>
+            </report>
+        </report>
+        "#,
+    );
+
+    let results = &report.report.results.as_ref().unwrap().result;
+
+    assert_eq!(grouped_threats(results), vec!["High", "Low"]);
+}
+
+#[test]
+fn group_results_by_threat_orders_standard_threats_first() {
+    let report = container_image_report();
+    let results = &report.report.results.as_ref().unwrap().result;
+
+    let grouped = group_results_by_threat(results);
+    let threat_names = grouped
+        .iter()
+        .map(|(threat, _)| threat.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(threat_names, vec!["Critical", "Medium", "Low", "Custom"]);
+}
+
+#[test]
+fn group_results_by_threat_keeps_results_inside_their_threat_group() {
+    let report = container_image_report();
+    let results = &report.report.results.as_ref().unwrap().result;
+
+    let grouped = group_results_by_threat(results);
+
+    let critical = grouped
+        .iter()
+        .find(|(threat, _)| threat == "Critical")
+        .expect("critical group should exist");
+
+    assert_eq!(critical.1.len(), 1);
+    assert_eq!(critical.1[0].name.as_deref(), Some("Finding B"));
+
+    let low = grouped
+        .iter()
+        .find(|(threat, _)| threat == "Low")
+        .expect("low group should exist");
+
+    assert_eq!(low.1.len(), 1);
+    assert_eq!(low.1[0].name.as_deref(), Some("Finding A"));
+}
+
+#[test]
+fn shorten_image_display_name_returns_original_when_it_fits() {
+    let value = shorten_image_display_name("app:1.0", None, 34);
+
+    assert_eq!(value, "app:1.0");
+}
+
+#[test]
+fn shorten_image_display_name_appends_arch_suffix_when_it_fits() {
+    let value = shorten_image_display_name("app:1.0", Some("(amd64)"), 34);
+
+    assert_eq!(value, "app:1.0(amd64)");
+}
+
+#[test]
+fn shorten_image_display_name_truncates_long_name_before_suffix() {
+    let value = shorten_image_display_name(
+        "registry.example.test/team/very-long-application-name:1.0",
+        Some("(amd64)"),
+        24,
+    );
+
+    assert!(value.ends_with("(amd64)"));
+    assert!(value.contains("..."));
+    assert_eq!(value.chars().count(), 24);
+}
+
+#[test]
+fn shorten_image_display_name_returns_suffix_when_suffix_is_too_long() {
+    let value = shorten_image_display_name("app:1.0", Some("(very-long-architecture)"), 8);
+
+    assert_eq!(value, "(very-long-architecture)");
+}
+
+#[test]
+fn shorten_image_display_name_handles_tiny_available_name_space() {
+    let value = shorten_image_display_name("app:1.0", Some("(amd64)"), 9);
+
+    assert_eq!(value, "...(amd64)");
+}
+
+#[test]
+fn target_display_name_returns_host_target_unchanged() {
+    let report = host_report();
+    let document = NativePdfDocument::new(&report);
+    let results = &report.report.results.as_ref().unwrap().result[0..2];
+
+    assert_eq!(document.target, ReportTargetKind::Host);
+    assert_eq!(
+        document.target_display_name("192.0.2.10", results),
+        "192.0.2.10"
+    );
+}
+
+#[test]
+fn target_display_name_returns_agent_target_unchanged() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+    document.target = ReportTargetKind::Agent;
+
+    let results = &report.report.results.as_ref().unwrap().result[0..2];
+
+    assert_eq!(document.target_display_name("agent-a", results), "agent-a");
+}
+
+#[test]
+fn target_display_name_shortens_container_image_and_adds_architecture() {
+    let report = container_image_report();
+    let document = NativePdfDocument::new(&report);
+    let results = &report.report.results.as_ref().unwrap().result;
+
+    assert_eq!(document.target, ReportTargetKind::ContainerImage);
+
+    let display_name = document.target_display_name(
+        "registry.example.test/team/very-long-application-name:1.0",
+        results,
+    );
+
+    assert!(display_name.ends_with("(amd64)"));
+    assert!(display_name.chars().count() <= 34);
+}
+
+#[test]
+fn write_results_per_host_handles_empty_results() {
+    let report = parse_report(
+        r#"
+        <report>
+            <report id="inner-report-id">
+                <scan_run_status>Done</scan_run_status>
+                <results />
+            </report>
+        </report>
+        "#,
+    );
+
+    let mut document = NativePdfDocument::new(&report);
+
+    document.write_results_per_host();
+
+    assert_eq!(document.pdf.page_count(), 0);
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_results_per_host_writes_host_results() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.write_results_per_host();
+
+    assert!(document.pdf.page_count() >= 1);
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_results_per_host_writes_container_image_results() {
+    let report = container_image_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.write_results_per_host();
+
+    assert!(document.pdf.page_count() >= 1);
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn changed_delta_renders_single_outer_finding_card() {
+    let report = changed_delta_report(
+        Some("Previous finding"),
+        Some("@@ -1 +1 @@\n-old line\n+new line"),
+    );
+    let result = &report
+        .report
+        .results
+        .as_ref()
+        .expect("report should contain results")
+        .result[0];
+
+    let mut single = NativePdfDocument::new(&report);
+    single.pdf.add_page();
+    let single_start = single.pdf.get_y().to_mm();
+    single.write_finding_card("Delta finding", result);
+    let single_end = single.pdf.get_y().to_mm();
+
+    let mut delta = NativePdfDocument::new(&report);
+    delta.pdf.add_page();
+    let delta_start = delta.pdf.get_y().to_mm();
+    delta.write_delta_finding("Delta finding", result, "192.0.2.10");
+    let delta_end = delta.pdf.get_y().to_mm();
+
+    println!(
+        "single_start={single_start} single_end={single_end} delta_start={delta_start} delta_end={delta_end} ratio={}",
+        delta_end / single_end
+    );
+    assert!(
+        delta_end > delta_start,
+        "changed delta should advance the document layout"
+    );
+    assert!(
+        delta_end < single_end * 2.4,
+        "changed delta should not duplicate a full second finding card"
+    );
+    assert!(
+        delta_end > single_end,
+        "changed delta should include the comparison context beyond the base card"
+    );
+}
+
+#[test]
+fn write_target_metadata_writes_host_metadata() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.target = ReportTargetKind::Host;
+    document.pdf.add_page();
+
+    let initial_y = document.pdf.get_y().to_mm();
+
+    let results = &report
+        .report
+        .results
+        .as_ref()
+        .expect("expected report results")
+        .result;
+
+    document.write_target_metadata(results);
+
+    let final_y = document.pdf.get_y().to_mm();
+
+    assert!(
+        final_y > initial_y,
+        "expected host metadata to advance Y: initial={initial_y}, final={final_y}"
+    );
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_target_metadata_writes_agent_metadata() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.target = ReportTargetKind::Agent;
+    document.pdf.add_page();
+
+    let initial_y = document.pdf.get_y().to_mm();
+
+    let results = &report
+        .report
+        .results
+        .as_ref()
+        .expect("expected report results")
+        .result;
+
+    document.write_target_metadata(results);
+
+    let final_y = document.pdf.get_y().to_mm();
+
+    assert!(
+        final_y > initial_y,
+        "expected agent metadata to advance Y: initial={initial_y}, final={final_y}"
+    );
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_target_metadata_writes_container_image_metadata() {
+    let report = container_image_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.pdf.add_page();
+    let initial_y = document.pdf.get_y();
+
+    let results = &report.report.results.as_ref().unwrap().result;
+    document.write_target_metadata(results);
+
+    assert!(document.pdf.get_y().to_mm() > initial_y.to_mm());
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_target_scan_times_writes_matching_host_scan_window() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.pdf.add_page();
+    let initial_y = document.pdf.get_y();
+
+    let results = &report.report.results.as_ref().unwrap().result[0..2];
+    document.write_target_scan_times("192.0.2.10", results);
+
+    assert!(document.pdf.get_y().to_mm() > initial_y.to_mm());
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_target_scan_times_ignores_missing_host_detail() {
+    let report = parse_report(
+        r#"
+        <report>
+            <report id="inner-report-id">
+                <scan_run_status>Done</scan_run_status>
+                <results>
+                    <result id="result-1">
+                        <host>192.0.2.99</host>
+                        <name>Finding A</name>
+                        <threat>High</threat>
+                    </result>
+                </results>
+            </report>
+        </report>
+        "#,
+    );
+
+    let mut document = NativePdfDocument::new(&report);
+
+    document.pdf.add_page();
+    let initial_y = document.pdf.get_y();
+
+    let results = &report.report.results.as_ref().unwrap().result;
+    document.write_target_scan_times("192.0.2.99", results);
+
+    assert_eq!(document.pdf.get_y().to_mm(), initial_y.to_mm());
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_return_to_host_link_does_nothing_when_target_has_no_registered_link() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.pdf.add_page();
+    let initial_y = document.pdf.get_y();
+
+    document.write_return_to_host_link("missing-host");
+
+    assert_eq!(document.pdf.get_y().to_mm(), initial_y.to_mm());
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_host_findings_writes_return_link_after_each_finding() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.pdf.add_page();
+
+    let target = "192.0.2.10";
+    let results = &report.report.results.as_ref().unwrap().result[0..2];
+
+    let initial_y = document.pdf.get_y();
+
+    document.write_host_findings("2.1", target, results);
+
+    assert!(document.pdf.get_y().to_mm() > initial_y.to_mm());
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_return_to_host_link_writes_link_when_target_has_registered_link() {
+    let report = host_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.pdf.add_page();
+
+    let target = "192.0.2.10";
+    let link = document.pdf.add_link();
+    document.host_links.insert(target.to_string(), link);
+
+    let initial_y = document.pdf.get_y();
+
+    document.write_return_to_host_link(target);
+
+    assert!(document.pdf.get_y().to_mm() > initial_y.to_mm());
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_container_findings_by_threat_writes_return_links() {
+    let report = container_image_report();
+    let mut document = NativePdfDocument::new(&report);
+
+    document.pdf.add_page();
+
+    let target = "registry.example.test/team/app:1.0";
+    let results = &report.report.results.as_ref().unwrap().result;
+
+    let initial_y = document.pdf.get_y();
+
+    document.write_container_findings_by_threat("2.1", target, results);
+
+    assert!(document.pdf.get_y().to_mm() > initial_y.to_mm());
+    assert!(document.pdf.ok());
+}
+
+#[test]
+fn write_delta_findings_renders_same_new_and_gone_states() {
+    for state in ["same", "new", "gone"] {
+        let report = delta_report(&format!("<delta>{state}</delta>"));
+        let mut document = render_results(&report);
+
+        assert!(document.pdf.ok());
+        assert!(document.pdf.page_count() >= 1);
+    }
+}
+
+#[test]
+fn write_delta_findings_renders_changed_result_with_previous_and_diff() {
+    let report = changed_delta_report(Some("Previous finding"), Some("@@ -1 +1 @@\n-old\n+new"));
+    let mut document = render_results(&report);
+
+    assert!(document.pdf.ok());
+    assert!(document.pdf.page_count() >= 1);
+}
+
+#[test]
+fn write_delta_findings_handles_changed_result_without_previous_result() {
+    let report = changed_delta_report(None, Some("@@ -1 +1 @@\n-old\n+new"));
+    let mut document = render_results(&report);
+
+    assert!(document.pdf.ok());
+    assert!(document.pdf.page_count() >= 1);
+}
+
+#[test]
+fn write_delta_findings_handles_changed_result_without_diff() {
+    let report = changed_delta_report(Some("Previous finding"), None);
+    let mut document = render_results(&report);
+
+    assert!(document.pdf.ok());
+    assert!(document.pdf.page_count() >= 1);
+}
+
+#[test]
+fn write_results_per_host_preserves_non_delta_rendering() {
+    let report = host_report();
+    let mut document = render_results(&report);
+
+    assert!(document.pdf.ok());
+    assert!(document.pdf.page_count() >= 1);
+}

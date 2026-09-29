@@ -1,1 +1,267 @@
-# -gvm-report-service
+![Greenbone Logo](https://www.greenbone.net/wp-content/uploads/gb_new-logo_horizontal_rgb_small.png)
+
+# gvm-report-service
+
+A lightweight Rust REST service for discovering, caching, and rendering GVM report formats.
+
+The project focuses on:
+
+- Moving report rendering out of the main application into a dedicated HTTP service.
+- Rendering reports from structured report data or XML payloads.
+- Discovering and caching report formats.
+- Producing requested report output through a clean, pluggable rendering architecture.
+
+---
+
+## Build status
+
+![Build and Test](https://github.com/greenbone/gvm-report-service/actions/workflows/build-and-test.yml/badge.svg)
+![CodeQL](https://github.com/greenbone/gvm-report-service/actions/workflows/codeql-analysis.yml/badge.svg)
+[![codecov](https://codecov.io/gh/greenbone/gvm-report-service/branch/main/graph/badge.svg)](https://codecov.io/gh/greenbone/gvm-report-service)
+
+---
+
+## Documentation
+
+- [Environment Variables](./docs/ENVIRONMENT_VARIABLES.md)
+
+---
+
+## Status
+
+Early development (bootstrap phase)
+
+Currently implemented:
+
+- Typed configuration (`GVMR_*`)
+- Structured logging (tracing)
+- Basic app wiring (Axum)
+- Health endpoints:
+  - `/health/live`
+  - `/health/ready`
+
+---
+
+## Running locally
+
+### Requirements
+
+- Rust (stable)
+- Cargo
+- Make
+
+### Run the server
+
+```bash
+make run-server
+```
+
+With environment variables:
+
+```bash
+GVMR_PORT=8084 LOG_LEVEL=debug make run-server
+```
+
+Or using a `.env` file:
+
+```bash
+make run-server
+```
+
+### Run the CLI
+
+By default, the CLI target shows help:
+
+```bash
+make run-cli
+```
+
+Pass CLI arguments with `CLI_ARGS`:
+
+```bash
+make run-cli CLI_ARGS="--xml scripts/report.xml --type native --output report.pdf"
+```
+
+---
+
+## Development Setup
+
+### Recommended Tools
+
+The Makefile is the main local development entry point.
+
+Install the optional Cargo tools used by the test and coverage targets:
+
+```bash
+cargo install cargo-nextest --locked
+cargo install cargo-llvm-cov
+```
+
+### Available Make targets
+
+Show all common commands:
+
+```bash
+make help
+```
+
+Check the whole workspace:
+
+```bash
+make check
+```
+
+Check individual crates:
+
+```bash
+make check-core
+make check-server
+make check-cli
+```
+
+Run the server:
+
+```bash
+make run-server
+```
+
+Run the CLI:
+
+```bash
+make run-cli
+```
+
+Run the standard workspace test suite:
+
+```bash
+make test
+```
+
+Run tests with `cargo-nextest`:
+
+```bash
+make nextest
+```
+
+Generate and open HTML coverage:
+
+```bash
+make cover
+```
+
+Run strict Clippy checks:
+
+```bash
+make clippy
+```
+
+Format the workspace:
+
+```bash
+make fmt
+```
+
+Check formatting without modifying files:
+
+```bash
+make fmt-check
+```
+
+Build the workspace:
+
+```bash
+make build
+```
+
+Build release binaries:
+
+```bash
+make build-release
+```
+
+Clean build artifacts:
+
+```bash
+make clean
+```
+
+---
+
+## Code Quality
+
+The preferred workflow is to use the Makefile so local development and CI can share the same commands.
+
+### Format code
+
+```bash
+make fmt
+```
+
+### Check formatting
+
+```bash
+make fmt-check
+```
+
+### Lint (strict)
+
+```bash
+make clippy
+```
+
+### Run tests
+
+```bash
+make test
+```
+
+For `cargo-nextest`:
+
+```bash
+make nextest
+```
+
+### Coverage
+
+```bash
+make cover
+```
+
+### Full local verification
+
+A typical pre-commit or pre-push verification sequence is:
+
+```bash
+make fmt-check
+make clippy
+make test
+```
+
+---
+
+## API
+
+When the service is running, interactive API documentation is available:
+
+- Swagger UI: [http://localhost:8084/docs](http://localhost:8084/docs)
+- OpenAPI spec: [http://localhost:8084/api-docs/openapi.json](http://localhost:8084/api-docs/openapi.json)
+
+---
+
+## Design Principles
+
+- Clear separation of concerns (API, service, domain, infra)
+- Typed configuration via environment variables
+- Minimal framework leakage into core logic
+- Pluggable rendering architecture (planned)
+
+---
+
+## License
+
+Copyright © Greenbone AG
+
+Licensed under the GNU Affero General Public License v3.0 or later.
+See [LICENSE](LICENSE).
+
+---

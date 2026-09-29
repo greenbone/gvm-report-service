@@ -1,0 +1,61 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+use std::collections::BTreeMap;
+
+use crate::domain::report_model::{ReportHost, ReportResult};
+use crate::service::report_view::{ReportTargetKind, all_results, image_display_name, result_host};
+
+use super::document::NativePdfDocument;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct FindingKey {
+    pub(crate) host: String,
+    pub(crate) index: usize,
+}
+
+impl<'a> NativePdfDocument<'a> {
+    pub(crate) fn group_results_by_target(&self) -> BTreeMap<String, Vec<ReportResult>> {
+        let mut grouped = BTreeMap::new();
+
+        for result in all_results(&self.report.report) {
+            grouped
+                .entry(self.target_key_for_result(result))
+                .or_insert_with(Vec::new)
+                .push(result.clone());
+        }
+
+        grouped
+    }
+
+    pub(crate) fn target_key_for_result(&self, result: &ReportResult) -> String {
+        match self.target {
+            ReportTargetKind::Host | ReportTargetKind::Agent => result_host(result).to_string(),
+
+            ReportTargetKind::ContainerImage => image_display_name(result),
+        }
+    }
+
+    pub(crate) fn host_detail_for_result(&self, result: &ReportResult) -> Option<&ReportHost> {
+        let host_key = result
+            .target_address()
+            .unwrap_or_else(|| result_host(result));
+
+        self.report
+            .report
+            .hosts_detail
+            .iter()
+            .find(|host| host.address() == Some(host_key))
+    }
+
+    pub(crate) fn agent_id_for_result(&self, result: &ReportResult) -> Option<String> {
+        self.host_detail_for_result(result)
+            .and_then(ReportHost::agent_id)
+            .map(ToOwned::to_owned)
+    }
+}
+
+#[cfg(test)]
+#[path = "grouping_tests.rs"]
+mod grouping_tests;

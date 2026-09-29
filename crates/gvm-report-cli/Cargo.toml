@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+[package]
+name = "gvm-report-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "gvm-report-cli"
+path = "src/main.rs"
+
+[dependencies]
+gvm-report-core = { path = "../gvm-report-core" }
+
+clap.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

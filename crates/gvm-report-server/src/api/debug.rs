@@ -1,0 +1,28 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+use axum::{extract::State, response::IntoResponse};
+
+use crate::{
+    api::error::ApiError,
+    app::state::AppState,
+    auth::{context::AuthContext, scope::require_scope},
+};
+
+pub async fn sync_ping(
+    State(state): State<AppState>,
+    ctx: AuthContext,
+) -> Result<impl IntoResponse, ApiError> {
+    require_scope(
+        &ctx,
+        &state.settings.auth_mode,
+        &state.settings.required_scope_sync,
+    )?;
+
+    Ok("sync ok")
+}
+
+#[cfg(test)]
+#[path = "debug_tests.rs"]
+mod debug_tests;

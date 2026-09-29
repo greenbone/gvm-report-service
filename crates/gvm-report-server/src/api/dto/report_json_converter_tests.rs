@@ -1,0 +1,1682 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+use serde::de::DeserializeOwned;
+use serde_json::{Map, Value, json};
+
+use super::*;
+use crate::api::dto::render as dto;
+use gvm_report_core::{
+    domain::report_model::DeltaState, service::report_xml_builder::build_report_xml,
+    xml::report_validator::parse_report_xml_flexible,
+};
+
+fn report_json_from_value(value: Value) -> dto::ReportJson {
+    serde_json::from_value(value).unwrap()
+}
+
+fn attrs(values: &[(&str, Value)]) -> Map<String, Value> {
+    values
+        .iter()
+        .map(|(key, value)| ((*key).to_string(), value.clone()))
+        .collect()
+}
+
+fn dto_from_value<T: DeserializeOwned>(value: Value) -> T {
+    serde_json::from_value(value).unwrap()
+}
+
+#[test]
+fn report_json_to_envelope_maps_top_level_fields_and_inner_report_id() {
+    let report_json = dto::ReportJson {
+        attrs: Some(attrs(&[
+            ("id", json!("report-id")),
+            ("format_id", json!("format-id")),
+            ("config_id", json!("config-id")),
+        ])),
+        scan_run_status: Some("Done".to_string()),
+        ..Default::default()
+    };
+
+    let envelope = report_json_to_envelope(&report_json);
+
+    assert_eq!(envelope.id.as_deref(), Some("report-id"));
+    assert_eq!(envelope.format_id.as_deref(), Some("format-id"));
+    assert_eq!(envelope.config_id.as_deref(), Some("config-id"));
+    assert_eq!(envelope.name.as_deref(), Some("Scan Report"));
+
+    assert_eq!(envelope.report.id.as_deref(), Some("report-id"));
+    assert_eq!(envelope.report.scan_run_status.as_deref(), Some("Done"));
+}
+
+#[test]
+fn report_json_to_envelope_maps_delta_fields() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": { "keyword": [] }
+        },
+        "delta": {
+            "report": {
+                "@id": "baseline-report",
+                "scan_run_status": "Done",
+                "scan_start": "2026-05-29T08:40:23Z",
+                "scan_end": "2026-05-29T08:51:04Z"
+            }
+        },
+        "results": {
+            "result": [{
+                "id": "result-1",
+                "host": "127.0.0.1",
+                "threat": "High",
+                "severity": 5,
+                "delta": {
+                    "state": "changed",
+                    "diff": "@@ -1 +1 @@\n-Old\n+New",
+                    "result": {
+                        "id": "previous-result",
+                        "host": "127.0.0.1",
+                        "threat": "Medium",
+                        "severity": 3
+                    }
+                }
+            }]
+        },
+        "result_count": {
+            "filtered": 1
+        },
+        "ports": {
+            "port": []
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+
+    assert!(envelope.report.is_delta_report());
+
+    let delta = envelope.report.delta.expect("report delta should exist");
+    let baseline = delta.report.expect("baseline report should exist");
+    assert_eq!(baseline.id.as_deref(), Some("baseline-report"));
+    assert_eq!(baseline.scan_run_status.as_deref(), Some("Done"));
+
+    let result = &envelope
+        .report
+        .results
+        .expect("results should exist")
+        .result[0];
+    let result_delta = result.delta.as_ref().expect("result delta should exist");
+
+    assert_eq!(
+        result_delta.state(),
+        Some(gvm_report_core::domain::report_model::DeltaState::Changed)
+    );
+    assert_eq!(
+        result_delta
+            .previous_result()
+            .and_then(|result| result.id.as_deref()),
+        Some("previous-result")
+    );
+}
+
+#[test]
+fn delta_dto_xml_round_trip_preserves_canonical_result_states() {
+    for (state, expected_state) in [
+        ("new", DeltaState::New),
+        ("gone", DeltaState::Gone),
+        ("same", DeltaState::Same),
+        ("changed", DeltaState::Changed),
+    ] {
+        let report_json = report_json_from_value(json!({
+            "@attrs": {
+                "id": "current-report"
+            },
+            "delta": {
+                "report": {
+                    "@id": "baseline-report"
+                }
+            },
+            "results": {
+                "result": [{
+                    "id": format!("{state}-result"),
+                    "host": "127.0.0.1",
+                    "delta": { "state": state }
+                }]
+            }
+        }));
+
+        let xml = build_report_xml(&serde_json::to_value(&report_json).unwrap()).unwrap();
+        let parsed = parse_report_xml_flexible(&xml).unwrap();
+        let result = &parsed.report.results.as_ref().unwrap().result[0];
+
+        assert!(xml.contains(r#"type="delta""#));
+        assert!(xml.contains(&format!("<delta>{state}</delta>")));
+        assert!(!xml.contains(&format!("<state>{state}</state>")));
+        assert!(parsed.report.is_delta_report());
+        assert_eq!(parsed.report.report_type.as_deref(), Some("delta"));
+        assert_eq!(
+            result.delta.as_ref().and_then(|delta| delta.state()),
+            Some(expected_state)
+        );
+    }
+}
+
+#[test]
+fn changed_delta_dto_xml_round_trip_preserves_previous_result_and_diff() {
+    let report_json = report_json_from_value(json!({
+        "@attrs": { "id": "current-report" },
+        "delta": { "report": { "@id": "baseline-report" } },
+        "results": {
+            "result": [{
+                "id": "current-result",
+                "host": "127.0.0.1",
+                "delta": {
+                    "state": "changed",
+                    "diff": "@@ -1 +1 @@\n-before\n+after",
+                    "result": {
+                        "id": "previous-result",
+                        "host": "127.0.0.1"
+                    }
+                }
+            }]
+        }
+    }));
+
+    let xml = build_report_xml(&serde_json::to_value(&report_json).unwrap()).unwrap();
+    let parsed = parse_report_xml_flexible(&xml).unwrap();
+    let delta = parsed.report.results.as_ref().unwrap().result[0]
+        .delta
+        .as_ref()
+        .unwrap();
+
+    assert!(xml.contains(r#"<result id="previous-result">"#));
+    assert!(!xml.contains("<id>previous-result</id>"));
+    assert_eq!(delta.state(), Some(DeltaState::Changed));
+    assert_eq!(
+        delta
+            .previous_result()
+            .and_then(|result| result.id.as_deref()),
+        Some("previous-result")
+    );
+    assert_eq!(delta.diff.as_deref(), Some("@@ -1 +1 @@\n-before\n+after"));
+}
+
+#[test]
+fn report_json_to_envelope_maps_gmp_version() {
+    let report_json = dto::ReportJson {
+        gmp: Some(attrs(&[("version", json!("22.5"))])),
+        ..Default::default()
+    };
+
+    let envelope = report_json_to_envelope(&report_json);
+
+    assert_eq!(
+        envelope.report.gmp.unwrap().version.as_deref(),
+        Some("22.5")
+    );
+}
+
+#[test]
+fn report_json_to_envelope_maps_filters_and_keywords() {
+    let mut report_json = dto::ReportJson::default();
+
+    report_json.filters.attrs = Some(attrs(&[("id", json!("filter-id"))]));
+
+    report_json.filters.term = "severity>5".to_string();
+    report_json.filters.filter = vec!["High only".to_string()];
+
+    report_json.filters.keywords.keyword = vec![
+        dto::FilterKeyword {
+            column: "severity".to_string(),
+            relation: ">".to_string(),
+            value: dto::Scalar::Integer(5),
+            extra: Map::new(),
+        },
+        dto::FilterKeyword {
+            column: "threat".to_string(),
+            relation: "=".to_string(),
+            value: dto::Scalar::String("High".to_string()),
+            extra: Map::new(),
+        },
+        dto::FilterKeyword {
+            column: "active".to_string(),
+            relation: "=".to_string(),
+            value: dto::Scalar::Bool(true),
+            extra: Map::new(),
+        },
+    ];
+
+    let envelope = report_json_to_envelope(&report_json);
+    let filters = envelope.report.filters.unwrap();
+
+    assert_eq!(filters.id.as_deref(), Some("filter-id"));
+    assert_eq!(filters.term.as_deref(), Some("severity>5"));
+    assert_eq!(filters.filter, vec!["High only".to_string()]);
+
+    let keywords = filters.keywords.unwrap().keyword;
+
+    assert_eq!(keywords.len(), 3);
+
+    assert_eq!(keywords[0].column.as_deref(), Some("severity"));
+    assert_eq!(keywords[0].relation.as_deref(), Some(">"));
+    assert_eq!(keywords[0].value.as_deref(), Some("5"));
+
+    assert_eq!(keywords[1].column.as_deref(), Some("threat"));
+    assert_eq!(keywords[1].relation.as_deref(), Some("="));
+    assert_eq!(keywords[1].value.as_deref(), Some("High"));
+
+    assert_eq!(keywords[2].column.as_deref(), Some("active"));
+    assert_eq!(keywords[2].relation.as_deref(), Some("="));
+    assert_eq!(keywords[2].value.as_deref(), Some("true"));
+}
+
+#[test]
+fn filters_from_dto_omits_blank_term() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "   ",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": []
+        },
+        "result_count": {
+            "filtered": 0
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+
+    assert_eq!(envelope.report.filters.unwrap().term, None);
+}
+
+#[test]
+fn report_json_to_envelope_maps_count_nodes() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "hosts": {
+            "count": 2
+        },
+        "closed_cves": {
+            "count": 3
+        },
+        "vulns": {
+            "count": 4
+        },
+        "os": {
+            "count": 5
+        },
+        "apps": {
+            "count": 6
+        },
+        "ssl_certs": {
+            "count": 7
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": []
+        },
+        "result_count": {
+            "filtered": 0
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+
+    assert_eq!(envelope.report.hosts.unwrap().count.as_deref(), Some("2"));
+    assert_eq!(
+        envelope.report.closed_cves.unwrap().count.as_deref(),
+        Some("3")
+    );
+    assert_eq!(envelope.report.vulns.unwrap().count.as_deref(), Some("4"));
+    assert_eq!(envelope.report.os.unwrap().count.as_deref(), Some("5"));
+    assert_eq!(envelope.report.apps.unwrap().count.as_deref(), Some("6"));
+    assert_eq!(
+        envelope.report.ssl_certs.unwrap().count.as_deref(),
+        Some("7")
+    );
+}
+
+#[test]
+fn report_json_to_envelope_maps_task_and_target() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "task": {
+            "id": "task-id",
+            "name": "Task Name",
+            "comment": "Task comment",
+            "progress": 42,
+            "target": {
+                "id": "target-id",
+                "trash": false,
+                "name": "Target Name",
+                "comment": "Target comment"
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": []
+        },
+        "result_count": {
+            "filtered": 0
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let task = envelope.report.task.unwrap();
+    let target = task.target.unwrap();
+
+    assert_eq!(task.id.as_deref(), Some("task-id"));
+    assert_eq!(task.name.as_deref(), Some("Task Name"));
+    assert_eq!(task.comment.as_deref(), Some("Task comment"));
+    assert_eq!(task.progress.as_deref(), Some("42"));
+
+    assert_eq!(target.id.as_deref(), Some("target-id"));
+    assert_eq!(target.trash.as_deref(), Some("false"));
+    assert_eq!(target.name.as_deref(), Some("Target Name"));
+    assert_eq!(target.comment.as_deref(), Some("Target comment"));
+}
+
+#[test]
+fn report_json_to_envelope_maps_timestamps_timezone_ports_and_severity() {
+    let report_json = dto::ReportJson {
+        timestamp: Some("2026-01-01T10:00:00Z".to_string()),
+        scan_start: Some("2026-01-01T09:00:00Z".to_string()),
+        scan_end: Some("2026-01-01T10:00:00Z".to_string()),
+        timezone: Some("Europe/Berlin".to_string()),
+        timezone_abbrev: Some("CET".to_string()),
+        ports: dto::Ports {
+            attrs: Some(attrs(&[("start", json!("1")), ("max", json!("10"))])),
+            count: Some(2),
+            ..Default::default()
+        },
+        severity: Some(dto::SeveritySummary {
+            full: Some(json!(8.7)),
+            filtered: Some(json!(7.1)),
+            extra: Map::new(),
+        }),
+        ..Default::default()
+    };
+
+    let envelope = report_json_to_envelope(&report_json);
+
+    assert_eq!(
+        envelope.report.timestamp.as_deref(),
+        Some("2026-01-01T10:00:00Z")
+    );
+    assert_eq!(
+        envelope.report.scan_start.as_deref(),
+        Some("2026-01-01T09:00:00Z")
+    );
+    assert_eq!(
+        envelope.report.scan_end.as_deref(),
+        Some("2026-01-01T10:00:00Z")
+    );
+    assert_eq!(envelope.report.timezone.as_deref(), Some("Europe/Berlin"));
+    assert_eq!(envelope.report.timezone_abbrev.as_deref(), Some("CET"));
+
+    let ports = envelope.report.ports.unwrap();
+
+    assert_eq!(ports.start.as_deref(), Some("1"));
+    assert_eq!(ports.max.as_deref(), Some("10"));
+    assert_eq!(ports.count.as_deref(), Some("2"));
+
+    let severity = envelope.report.severity.unwrap();
+
+    assert_eq!(severity.full.as_deref(), Some("8.7"));
+    assert_eq!(severity.filtered.as_deref(), Some("7.1"));
+}
+
+#[test]
+fn results_from_dto_filters_info_debug_false_positive_and_empty_threats() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "attrs": {
+                "start": "1",
+                "max": "1000"
+            },
+            "result": [
+                {
+                    "host": "host-a",
+                    "port": "443/tcp",
+                    "threat": "High"
+                },
+                {
+                    "host": "host-a",
+                    "threat": "Info"
+                },
+                {
+                    "host": "host-a",
+                    "threat": "Debug"
+                },
+                {
+                    "host": "host-a",
+                    "threat": "False Positive"
+                },
+                {
+                    "host": "host-a",
+                    "threat": "   "
+                }
+            ]
+        },
+        "result_count": {
+            "filtered": 0
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let results = envelope.report.results.unwrap();
+
+    assert_eq!(results.result.len(), 1);
+    assert_eq!(results.result[0].threat.as_deref(), Some("High"));
+    assert_eq!(results.result[0].port.as_deref(), Some("443/tcp"));
+
+    let host = results.result[0].host.as_ref().unwrap();
+
+    assert_eq!(host.text.as_deref(), Some("host-a"));
+}
+
+#[test]
+fn result_count_from_dto_maps_all_count_buckets() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": []
+        },
+        "result_count": {
+            "full": 10,
+            "filtered": 5,
+            "critical": {
+                "full": 1,
+                "filtered": 1
+            },
+            "hole": {
+                "full": 2,
+                "filtered": 1
+            },
+            "high": {
+                "full": 3,
+                "filtered": 2
+            },
+            "info": {
+                "full": 4,
+                "filtered": 0
+            },
+            "low": {
+                "full": 5,
+                "filtered": 3
+            },
+            "log": {
+                "full": 6,
+                "filtered": 4
+            },
+            "warning": {
+                "full": 7,
+                "filtered": 5
+            },
+            "medium": {
+                "full": 8,
+                "filtered": 6
+            },
+            "false_positive": {
+                "full": 9,
+                "filtered": 7
+            }
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let count = envelope.report.result_count.unwrap();
+
+    assert_eq!(count.full.as_deref(), Some("10"));
+    assert_eq!(count.filtered.as_deref(), Some("5"));
+
+    assert_eq!(count.critical.unwrap().full.as_deref(), Some("1"));
+    assert_eq!(count.hole.unwrap().filtered.as_deref(), Some("1"));
+    assert_eq!(count.high.unwrap().full.as_deref(), Some("3"));
+    assert_eq!(count.info.unwrap().full.as_deref(), Some("4"));
+    assert_eq!(count.low.unwrap().filtered.as_deref(), Some("3"));
+    assert_eq!(count.log.unwrap().filtered.as_deref(), Some("4"));
+    assert_eq!(count.warning.unwrap().full.as_deref(), Some("7"));
+    assert_eq!(count.medium.unwrap().filtered.as_deref(), Some("6"));
+    assert_eq!(count.false_positive.unwrap().full.as_deref(), Some("9"));
+}
+
+#[test]
+fn solution_from_map_supports_text_aliases_and_type_fallback() {
+    let mut map = Map::new();
+    map.insert("type".to_string(), json!("Mitigation"));
+    map.insert("$text".to_string(), json!("Use a firewall"));
+
+    let solution = solution_from_map(&map);
+
+    assert_eq!(solution.r#type.as_deref(), Some("Mitigation"));
+    assert_eq!(solution.text.as_deref(), Some("Use a firewall"));
+
+    let mut map = Map::new();
+    map.insert("text".to_string(), json!("Plain text"));
+
+    let solution = solution_from_map(&map);
+
+    assert_eq!(solution.r#type, None);
+    assert_eq!(solution.text.as_deref(), Some("Plain text"));
+}
+
+#[test]
+fn refs_from_map_supports_single_object_array_string_and_ignores_blank_ids() {
+    let mut attrs = Map::new();
+    attrs.insert("id".to_string(), json!("CVE-2026-0001"));
+    attrs.insert("type".to_string(), json!("cve"));
+
+    let mut object_ref = Map::new();
+    object_ref.insert("@attrs".to_string(), Value::Object(attrs));
+
+    let mut direct_ref = Map::new();
+    direct_ref.insert("id".to_string(), json!("BID-123"));
+    direct_ref.insert("type".to_string(), json!("bid"));
+
+    let mut blank_ref = Map::new();
+    blank_ref.insert("id".to_string(), json!("   "));
+
+    let mut refs_map = Map::new();
+    refs_map.insert(
+        "ref".to_string(),
+        json!([
+            Value::Object(object_ref),
+            Value::Object(direct_ref),
+            "URL-1",
+            Value::Object(blank_ref),
+            "",
+            null
+        ]),
+    );
+
+    let refs = refs_from_map(&refs_map);
+
+    assert_eq!(refs.reference.len(), 3);
+
+    assert_eq!(refs.reference[0].id.as_deref(), Some("CVE-2026-0001"));
+    assert_eq!(refs.reference[0].r#type.as_deref(), Some("cve"));
+
+    assert_eq!(refs.reference[1].id.as_deref(), Some("BID-123"));
+    assert_eq!(refs.reference[1].r#type.as_deref(), Some("bid"));
+
+    assert_eq!(refs.reference[2].id.as_deref(), Some("URL-1"));
+    assert_eq!(refs.reference[2].r#type, None);
+}
+
+#[test]
+fn refs_from_map_supports_map_without_ref_key() {
+    let mut map = Map::new();
+    map.insert("id".to_string(), json!("CVE-2026-0002"));
+    map.insert("type".to_string(), json!("cve"));
+
+    let refs = refs_from_map(&map);
+
+    assert_eq!(refs.reference.len(), 1);
+    assert_eq!(refs.reference[0].id.as_deref(), Some("CVE-2026-0002"));
+    assert_eq!(refs.reference[0].r#type.as_deref(), Some("cve"));
+}
+
+#[test]
+fn qod_from_value_maps_object_and_scalar_values() {
+    let qod = qod_from_value(&json!({
+        "value": 95,
+        "@type": "remote_banner"
+    }));
+
+    assert_eq!(qod.value.as_deref(), Some("95"));
+    assert_eq!(qod.r#type.as_deref(), Some("remote_banner"));
+
+    let qod = qod_from_value(&json!(80));
+
+    assert_eq!(qod.value.as_deref(), Some("80"));
+    assert_eq!(qod.r#type, None);
+}
+
+#[test]
+fn attr_string_reads_direct_and_at_prefixed_keys() {
+    let mut attrs = Map::new();
+    attrs.insert("id".to_string(), json!("direct-id"));
+    attrs.insert("@format_id".to_string(), json!("format-id"));
+
+    assert_eq!(
+        attr_string(Some(&attrs), "id").as_deref(),
+        Some("direct-id")
+    );
+    assert_eq!(
+        attr_string(Some(&attrs), "format_id").as_deref(),
+        Some("format-id")
+    );
+    assert_eq!(attr_string(Some(&attrs), "missing"), None);
+    assert_eq!(attr_string(None, "id"), None);
+}
+
+#[test]
+fn value_to_string_from_value_maps_supported_json_values() {
+    assert_eq!(value_to_string_from_value(&Value::Null), None);
+    assert_eq!(
+        value_to_string_from_value(&json!("text")).as_deref(),
+        Some("text")
+    );
+    assert_eq!(
+        value_to_string_from_value(&json!(42)).as_deref(),
+        Some("42")
+    );
+    assert_eq!(
+        value_to_string_from_value(&json!(true)).as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        value_to_string_from_value(&json!([1, 2])).as_deref(),
+        Some("[1,2]")
+    );
+    assert_eq!(
+        value_to_string_from_value(&json!({"a": 1})).as_deref(),
+        Some("{\"a\":1}")
+    );
+}
+
+#[test]
+fn scalar_to_string_maps_all_scalar_variants() {
+    assert_eq!(
+        scalar_to_string(&dto::Scalar::String("text".to_string())),
+        "text"
+    );
+    assert_eq!(scalar_to_string(&dto::Scalar::Integer(42)), "42");
+    assert_eq!(scalar_to_string(&dto::Scalar::Float(4.2)), "4.2");
+    assert_eq!(scalar_to_string(&dto::Scalar::Bool(true)), "true");
+}
+
+#[test]
+fn should_keep_result_filters_expected_threats() {
+    let high = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": [
+                {
+                    "host": "host-a",
+                    "threat": "High"
+                }
+            ]
+        },
+        "result_count": {
+            "filtered": 1
+        },
+        "host": []
+    }));
+
+    let high_result = &high.results.result[0];
+
+    assert!(should_keep_result(high_result));
+
+    let log = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": [
+                {
+                    "host": "host-a",
+                    "threat": "Log"
+                }
+            ]
+        },
+        "result_count": {
+            "filtered": 1
+        },
+        "host": []
+    }));
+
+    assert!(should_keep_result(&log.results.result[0]));
+
+    for threat in ["", "   ", "Info", "Debug", "False Positive"] {
+        let value = report_json_from_value(json!({
+            "filters": {
+                "term": "",
+                "keywords": {
+                    "keyword": []
+                }
+            },
+            "ports": {
+                "port": []
+            },
+            "results": {
+                "result": [
+                    {
+                        "host": "host-a",
+                        "threat": threat
+                    }
+                ]
+            },
+            "result_count": {
+                "filtered": 1
+            },
+            "host": []
+        }));
+
+        assert!(!should_keep_result(&value.results.result[0]));
+    }
+}
+
+#[test]
+fn owner_from_dto_maps_owner_name() {
+    let owner: dto::Owner = dto_from_value(json!({
+        "name": "Owner Name"
+    }));
+
+    let result = owner_from_dto(&owner);
+
+    assert_eq!(result.name.as_deref(), Some("Owner Name"));
+}
+
+#[test]
+fn result_host_from_dto_maps_string_host() {
+    let host: dto::HostValue = dto_from_value(json!("192.168.1.10"));
+
+    let result = result_host_from_dto(&host);
+
+    assert_eq!(result.text.as_deref(), Some("192.168.1.10"));
+    assert!(result.asset.is_none());
+    assert!(result.hostname.is_none());
+}
+
+#[test]
+fn result_host_from_dto_maps_object_host_text_and_hostname() {
+    let host = dto::HostValue::Object(dto::ResultHost {
+        text: Some("192.168.1.10".to_string()),
+        asset: None,
+        hostname: Some("example.local".to_string()),
+        extra: Map::new(),
+    });
+
+    let result = result_host_from_dto(&host);
+
+    assert_eq!(result.text.as_deref(), Some("192.168.1.10"));
+    assert_eq!(result.hostname.as_deref(), Some("example.local"));
+    assert!(result.asset.is_none());
+}
+
+#[test]
+fn asset_ref_from_dto_maps_asset_id_from_attrs() {
+    let asset: dto::AssetRef = dto_from_value(json!({
+        "@attrs": {
+            "asset_id": "asset-id"
+        }
+    }));
+
+    let result = asset_ref_from_dto(&asset);
+
+    assert_eq!(result.asset_id.as_deref(), Some("asset-id"));
+}
+
+#[test]
+fn nvt_from_dto_maps_core_fields() {
+    let nvt: dto::Nvt = dto_from_value(json!({
+        "attrs": {
+            "oid": "1.2.3.4"
+        },
+        "type": "nvt",
+        "name": "NVT Name",
+        "family": "NVT Family",
+        "cvss_base": 8.7,
+        "tags": "summary=Summary text|impact=Impact text"
+    }));
+
+    let result = nvt_from_dto(&nvt);
+
+    assert_eq!(result.r#type.as_deref(), Some("nvt"));
+    assert_eq!(result.name.as_deref(), Some("NVT Name"));
+    assert_eq!(result.family.as_deref(), Some("NVT Family"));
+    assert_eq!(result.cvss_base.as_deref(), Some("8.7"));
+    assert_eq!(
+        result.tags.as_deref(),
+        Some("summary=Summary text|impact=Impact text")
+    );
+}
+
+#[test]
+fn report_host_from_dto_maps_asset_counts_and_details() {
+    let host: dto::HostEntry = dto_from_value(json!({
+        "ip": "192.168.1.10",
+        "asset": {
+            "attrs": {
+                "asset_id": "asset-id"
+            },
+            "@attrs": {
+                "asset_id": "asset-id"
+            }
+        },
+        "start": "2026-01-01T09:00:00Z",
+        "end": "2026-01-01T10:00:00Z",
+        "port_count": {
+            "page": 2
+        },
+        "result_count": {
+            "page": 3,
+            "critical": {
+                "page": 1
+            },
+            "hole": {
+                "page": 2
+            },
+            "high": {
+                "page": 3
+            },
+            "warning": {
+                "page": 4
+            },
+            "medium": {
+                "page": 5
+            },
+            "info": {
+                "page": 6
+            },
+            "low": {
+                "page": 7
+            },
+            "log": {
+                "page": 8
+            },
+            "false_positive": {
+                "page": 9
+            }
+        },
+        "detail": [
+            {
+                "name": "OS",
+                "value": "Linux",
+                "source": {
+                    "type": "nvt",
+                    "name": "Source Name",
+                    "description": "Source Description"
+                },
+                "extra": "extra-value"
+            }
+        ]
+    }));
+
+    let result = report_host_from_dto(&host);
+
+    assert_eq!(result.ip.as_deref(), Some("192.168.1.10"));
+    assert_eq!(
+        result.asset.as_ref().unwrap().asset_id.as_deref(),
+        Some("asset-id")
+    );
+    assert_eq!(result.start.as_deref(), Some("2026-01-01T09:00:00Z"));
+    assert_eq!(result.end.as_deref(), Some("2026-01-01T10:00:00Z"));
+
+    assert_eq!(
+        result.port_count.as_ref().unwrap().page.as_deref(),
+        Some("2")
+    );
+
+    let result_count = result.result_count.as_ref().unwrap();
+
+    assert_eq!(result_count.page.as_deref(), Some("3"));
+    assert_eq!(
+        result_count.critical.as_ref().unwrap().page.as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        result_count.hole.as_ref().unwrap().page.as_deref(),
+        Some("2")
+    );
+    assert_eq!(
+        result_count.high.as_ref().unwrap().page.as_deref(),
+        Some("3")
+    );
+    assert_eq!(
+        result_count.warning.as_ref().unwrap().page.as_deref(),
+        Some("4")
+    );
+    assert_eq!(
+        result_count.medium.as_ref().unwrap().page.as_deref(),
+        Some("5")
+    );
+    assert_eq!(
+        result_count.info.as_ref().unwrap().page.as_deref(),
+        Some("6")
+    );
+    assert_eq!(
+        result_count.low.as_ref().unwrap().page.as_deref(),
+        Some("7")
+    );
+    assert_eq!(
+        result_count.log.as_ref().unwrap().page.as_deref(),
+        Some("8")
+    );
+    assert_eq!(
+        result_count
+            .false_positive
+            .as_ref()
+            .unwrap()
+            .page
+            .as_deref(),
+        Some("9")
+    );
+
+    let detail = &result.detail[0];
+
+    assert_eq!(detail.name.as_deref(), Some("OS"));
+    assert_eq!(detail.value.as_deref(), Some("Linux"));
+    assert_eq!(detail.extra.as_deref(), Some("extra-value"));
+
+    let source = detail.source.as_ref().unwrap();
+
+    assert_eq!(source.r#type.as_deref(), Some("nvt"));
+    assert_eq!(source.name.as_deref(), Some("Source Name"));
+    assert_eq!(source.description.as_deref(), Some("Source Description"));
+}
+
+#[test]
+fn host_detail_from_dto_maps_source_and_extra() {
+    let detail: dto::HostDetail = dto_from_value(json!({
+        "name": "OS",
+        "value": "Linux",
+        "source": {
+            "type": "nvt",
+            "name": "Source Name",
+            "description": "Source Description"
+        },
+        "extra": "extra-value"
+    }));
+
+    let result = host_detail_from_dto(&detail);
+
+    assert_eq!(result.name.as_deref(), Some("OS"));
+    assert_eq!(result.value.as_deref(), Some("Linux"));
+    assert_eq!(result.extra.as_deref(), Some("extra-value"));
+
+    let source = result.source.unwrap();
+
+    assert_eq!(source.r#type.as_deref(), Some("nvt"));
+    assert_eq!(source.name.as_deref(), Some("Source Name"));
+    assert_eq!(source.description.as_deref(), Some("Source Description"));
+}
+
+#[test]
+fn host_detail_source_from_dto_maps_all_fields() {
+    let source: dto::HostDetailSource = dto_from_value(json!({
+        "type": "nvt",
+        "name": "Source Name",
+        "description": "Source Description"
+    }));
+
+    let result = host_detail_source_from_dto(&source);
+
+    assert_eq!(result.r#type.as_deref(), Some("nvt"));
+    assert_eq!(result.name.as_deref(), Some("Source Name"));
+    assert_eq!(result.description.as_deref(), Some("Source Description"));
+}
+
+#[test]
+fn host_result_count_from_dto_maps_page_counts_and_deprecated_counts() {
+    let count: dto::HostResultCount = dto_from_value(json!({
+        "page": 10,
+        "critical": {
+            "page": 1
+        },
+        "hole": {
+            "page": 2
+        },
+        "high": {
+            "page": 3
+        },
+        "warning": {
+            "page": 4
+        },
+        "medium": {
+            "page": 5
+        },
+        "info": {
+            "page": 6
+        },
+        "low": {
+            "page": 7
+        },
+        "log": {
+            "page": 8
+        },
+        "false_positive": {
+            "page": 9
+        }
+    }));
+
+    let result = host_result_count_from_dto(&count);
+
+    assert_eq!(result.page.as_deref(), Some("10"));
+    assert_eq!(result.critical.unwrap().page.as_deref(), Some("1"));
+    assert_eq!(result.hole.unwrap().page.as_deref(), Some("2"));
+    assert_eq!(result.high.unwrap().page.as_deref(), Some("3"));
+    assert_eq!(result.warning.unwrap().page.as_deref(), Some("4"));
+    assert_eq!(result.medium.unwrap().page.as_deref(), Some("5"));
+    assert_eq!(result.info.unwrap().page.as_deref(), Some("6"));
+    assert_eq!(result.low.unwrap().page.as_deref(), Some("7"));
+    assert_eq!(result.log.unwrap().page.as_deref(), Some("8"));
+    assert_eq!(result.false_positive.unwrap().page.as_deref(), Some("9"));
+}
+
+#[test]
+fn page_count_from_dto_maps_page_to_string() {
+    let count: dto::PageCount = dto_from_value(json!({
+        "page": 42
+    }));
+
+    let result = page_count_from_dto(&count);
+
+    assert_eq!(result.page.as_deref(), Some("42"));
+}
+
+#[test]
+fn deprecated_page_count_from_dto_maps_page_and_sets_deprecated_to_none() {
+    let count: dto::PageCount = dto_from_value(json!({
+        "page": 42
+    }));
+
+    let result = deprecated_page_count_from_dto(&count);
+
+    assert_eq!(result.page.as_deref(), Some("42"));
+    assert_eq!(result.deprecated, None);
+}
+
+#[test]
+fn report_json_to_envelope_maps_task_oci_image_target() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "task": {
+            "id": "task-id",
+            "name": "OCI image task",
+            "progress": 100,
+            "oci_image_target": {
+                "id": "oci-target-id",
+                "trash": 0,
+                "name": "cspmtcenter:25.0.7.B043",
+                "comment": "OCI image target comment"
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": []
+        },
+        "result_count": {
+            "filtered": 0
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let task = envelope.report.task.unwrap();
+
+    assert_eq!(task.id.as_deref(), Some("task-id"));
+    assert_eq!(task.name.as_deref(), Some("OCI image task"));
+    assert_eq!(task.progress.as_deref(), Some("100"));
+
+    assert!(task.target.is_none());
+    assert!(task.agent_group.is_none());
+
+    let oci_image_target = task.oci_image_target.unwrap();
+
+    assert_eq!(oci_image_target.id.as_deref(), Some("oci-target-id"));
+    assert_eq!(oci_image_target.trash.as_deref(), Some("0"));
+    assert_eq!(
+        oci_image_target.name.as_deref(),
+        Some("cspmtcenter:25.0.7.B043")
+    );
+    assert_eq!(
+        oci_image_target.comment.as_deref(),
+        Some("OCI image target comment")
+    );
+}
+
+#[test]
+fn report_json_to_envelope_maps_task_agent_group() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "task": {
+            "id": "task-id",
+            "name": "Agent task",
+            "progress": 100,
+            "agent_group": {
+                "id": "agent-group-id",
+                "trash": false,
+                "name": "agent-group-1-1",
+                "comment": "Agent group comment"
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": []
+        },
+        "result_count": {
+            "filtered": 0
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let task = envelope.report.task.unwrap();
+
+    assert_eq!(task.id.as_deref(), Some("task-id"));
+    assert_eq!(task.name.as_deref(), Some("Agent task"));
+    assert_eq!(task.progress.as_deref(), Some("100"));
+
+    assert!(task.target.is_none());
+    assert!(task.oci_image_target.is_none());
+
+    let agent_group = task.agent_group.unwrap();
+
+    assert_eq!(agent_group.id.as_deref(), Some("agent-group-id"));
+    assert_eq!(agent_group.trash.as_deref(), Some("false"));
+    assert_eq!(agent_group.name.as_deref(), Some("agent-group-1-1"));
+    assert_eq!(agent_group.comment.as_deref(), Some("Agent group comment"));
+}
+
+#[test]
+fn report_json_to_envelope_maps_result_without_host() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": [
+                {
+                    "id": "result-id",
+                    "name": "Finding without host",
+                    "port": "general/tcp",
+                    "threat": "High",
+                    "severity": 8.0,
+                    "qod": {
+                        "value": 70
+                    },
+                    "description": "Description"
+                }
+            ]
+        },
+        "result_count": {
+            "filtered": 1
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let results = envelope.report.results.unwrap();
+
+    assert_eq!(results.result.len(), 1);
+
+    let result = &results.result[0];
+
+    assert_eq!(result.id.as_deref(), Some("result-id"));
+    assert_eq!(result.name.as_deref(), Some("Finding without host"));
+    assert_eq!(result.host, None);
+    assert_eq!(result.port.as_deref(), Some("general/tcp"));
+    assert_eq!(result.threat.as_deref(), Some("High"));
+    assert_eq!(result.severity.as_deref(), Some("8.0"));
+    assert_eq!(result.description.as_deref(), Some("Description"));
+}
+
+#[test]
+fn report_json_to_envelope_maps_result_oci_image() {
+    let image_ref = "oci://registry.example.local/project/example-image:1.2.3".to_string();
+    let image_display_name = "example-image:1.2.3 (amd64)".to_string();
+    let image_digest =
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string();
+
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": [
+                {
+                    "@attrs": {
+                        "id": "result-1"
+                    },
+                    "name": "OCI image finding",
+                    "host": {
+                        "#text": image_display_name,
+                        "hostname": image_ref
+                    },
+                    "port": "general/tcp",
+                    "threat": "Critical",
+                    "severity": 10.0,
+                    "qod": {
+                        "value": 70,
+                        "type": "package"
+                    },
+                    "description": "OCI image finding description",
+                    "oci_image": {
+                        "name": image_ref,
+                        "digest": image_digest,
+                        "registry": "registry.example.local",
+                        "path": "project",
+                        "short_name": "example-image:1.2.3"
+                    }
+                }
+            ]
+        },
+        "result_count": {
+            "filtered": 1
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let results = envelope.report.results.unwrap();
+
+    assert_eq!(results.result.len(), 1);
+
+    let result = &results.result[0];
+
+    assert_eq!(result.id.as_deref(), Some("result-1"));
+    assert_eq!(result.name.as_deref(), Some("OCI image finding"));
+    assert_eq!(result.port.as_deref(), Some("general/tcp"));
+    assert_eq!(result.threat.as_deref(), Some("Critical"));
+    assert_eq!(result.severity.as_deref(), Some("10.0"));
+    assert_eq!(
+        result.description.as_deref(),
+        Some("OCI image finding description")
+    );
+
+    let host = result.host.as_ref().unwrap();
+
+    assert_eq!(host.text.as_deref(), Some("example-image:1.2.3 (amd64)"));
+    assert_eq!(
+        host.hostname.as_deref(),
+        Some("oci://registry.example.local/project/example-image:1.2.3")
+    );
+
+    let oci_image = result.oci_image.as_ref().unwrap();
+
+    assert_eq!(
+        oci_image.name.as_deref(),
+        Some("oci://registry.example.local/project/example-image:1.2.3")
+    );
+    assert_eq!(
+        oci_image.digest.as_deref(),
+        Some("sha256:1111111111111111111111111111111111111111111111111111111111111111")
+    );
+    assert_eq!(
+        oci_image.registry.as_deref(),
+        Some("registry.example.local")
+    );
+    assert_eq!(oci_image.path.as_deref(), Some("project"));
+    assert_eq!(oci_image.short_name.as_deref(), Some("example-image:1.2.3"));
+}
+
+#[test]
+fn report_json_to_envelope_maps_oci_image_report_flow() {
+    let image_ref = "oci://registry.example.local/project/example-image:1.2.3";
+    let image_display_name = "example-image:1.2.3 (amd64)";
+    let image_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+    let report_json = report_json_from_value(json!({
+        "@attrs": {
+            "id": "report-1",
+            "format_id": "format-1"
+        },
+        "scan_run_status": "Done",
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "task": {
+            "id": "task-1",
+            "name": "OCI image task",
+            "progress": 100,
+            "oci_image_target": {
+                "id": "oci-target-1",
+                "trash": 0,
+                "name": "example-image:1.2.3",
+                "comment": ""
+            }
+        },
+        "ports": {
+            "@attrs": {
+                "start": 1,
+                "max": 1
+            },
+            "count": 1,
+            "port": [
+                {
+                    "#text": "general/tcp",
+                    "host": image_display_name,
+                    "threat": "Critical",
+                    "severity": 10.0
+                }
+            ]
+        },
+        "results": {
+            "@attrs": {
+                "start": 1,
+                "max": 2
+            },
+            "result": [
+                {
+                    "@attrs": {
+                        "id": "result-1"
+                    },
+                    "name": "Critical OCI image finding",
+                    "host": {
+                        "#text": image_display_name,
+                        "hostname": image_ref
+                    },
+                    "port": "general/tcp",
+                    "threat": "Critical",
+                    "severity": 10.0,
+                    "qod": {
+                        "value": 70
+                    },
+                    "description": "Critical OCI image finding description",
+                    "oci_image": {
+                        "name": image_ref,
+                        "digest": image_digest,
+                        "registry": "registry.example.local",
+                        "path": "project",
+                        "short_name": "example-image:1.2.3"
+                    }
+                },
+                {
+                    "@attrs": {
+                        "id": "result-2"
+                    },
+                    "name": "High OCI image finding",
+                    "host": {
+                        "#text": image_display_name,
+                        "hostname": image_ref
+                    },
+                    "port": "general/tcp",
+                    "threat": "High",
+                    "severity": 8.0,
+                    "qod": {
+                        "value": 70
+                    },
+                    "description": "High OCI image finding description",
+                    "oci_image": {
+                        "name": image_ref,
+                        "digest": image_digest,
+                        "registry": "registry.example.local",
+                        "path": "project",
+                        "short_name": "example-image:1.2.3"
+                    }
+                }
+            ]
+        },
+        "result_count": {
+            "full": 2,
+            "filtered": 2,
+            "critical": {
+                "full": 1,
+                "filtered": 1
+            },
+            "high": {
+                "full": 1,
+                "filtered": 1
+            }
+        },
+        "hosts": {
+            "count": 1
+        },
+        "host": [
+            {
+                "ip": image_display_name,
+                "start": "2026-01-01T10:00:00Z",
+                "end": "2026-01-01T10:05:00Z",
+                "port_count": {
+                    "page": 1
+                },
+                "result_count": {
+                    "page": 2,
+                    "critical": {
+                        "page": 1
+                    },
+                    "high": {
+                        "page": 1
+                    }
+                }
+            }
+        ]
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+
+    assert_eq!(envelope.id.as_deref(), Some("report-1"));
+    assert_eq!(envelope.format_id.as_deref(), Some("format-1"));
+
+    let task = envelope.report.task.as_ref().unwrap();
+
+    assert_eq!(task.id.as_deref(), Some("task-1"));
+    assert_eq!(task.name.as_deref(), Some("OCI image task"));
+    assert!(task.target.is_none());
+    assert!(task.agent_group.is_none());
+
+    let oci_image_target = task.oci_image_target.as_ref().unwrap();
+
+    assert_eq!(oci_image_target.id.as_deref(), Some("oci-target-1"));
+    assert_eq!(
+        oci_image_target.name.as_deref(),
+        Some("example-image:1.2.3")
+    );
+
+    let ports = envelope.report.ports.as_ref().unwrap();
+
+    assert_eq!(ports.count.as_deref(), Some("1"));
+    assert_eq!(ports.port.len(), 1);
+    assert_eq!(ports.port[0].text.as_deref(), Some("general/tcp"));
+    assert_eq!(ports.port[0].host.as_deref(), Some(image_display_name));
+    assert_eq!(ports.port[0].threat.as_deref(), Some("Critical"));
+
+    let host = envelope
+        .report
+        .hosts_detail
+        .first()
+        .expect("expected one host entry");
+
+    assert_eq!(host.ip.as_deref(), Some(image_display_name));
+    assert_eq!(host.port_count.as_ref().unwrap().page.as_deref(), Some("1"));
+
+    let host_result_count = host.result_count.as_ref().unwrap();
+
+    assert_eq!(host_result_count.page.as_deref(), Some("2"));
+    assert_eq!(
+        host_result_count.critical.as_ref().unwrap().page.as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        host_result_count.high.as_ref().unwrap().page.as_deref(),
+        Some("1")
+    );
+
+    let result_count = envelope.report.result_count.as_ref().unwrap();
+
+    assert_eq!(result_count.full.as_deref(), Some("2"));
+    assert_eq!(result_count.filtered.as_deref(), Some("2"));
+
+    let results = envelope.report.results.as_ref().unwrap();
+
+    assert_eq!(results.result.len(), 2);
+
+    let first = &results.result[0];
+
+    assert_eq!(first.id.as_deref(), Some("result-1"));
+    assert_eq!(first.name.as_deref(), Some("Critical OCI image finding"));
+    assert_eq!(first.threat.as_deref(), Some("Critical"));
+    assert_eq!(first.port.as_deref(), Some("general/tcp"));
+
+    let first_host = first.host.as_ref().unwrap();
+
+    assert_eq!(first_host.text.as_deref(), Some(image_display_name));
+    assert_eq!(first_host.hostname.as_deref(), Some(image_ref));
+
+    let first_oci_image = first.oci_image.as_ref().unwrap();
+
+    assert_eq!(first_oci_image.name.as_deref(), Some(image_ref));
+    assert_eq!(first_oci_image.digest.as_deref(), Some(image_digest));
+    assert_eq!(
+        first_oci_image.registry.as_deref(),
+        Some("registry.example.local")
+    );
+    assert_eq!(first_oci_image.path.as_deref(), Some("project"));
+    assert_eq!(
+        first_oci_image.short_name.as_deref(),
+        Some("example-image:1.2.3")
+    );
+}
+
+#[test]
+fn results_from_dto_keeps_oci_image_results_including_log() {
+    let report_json = report_json_from_value(json!({
+        "filters": {
+            "term": "",
+            "keywords": {
+                "keyword": []
+            }
+        },
+        "ports": {
+            "port": []
+        },
+        "results": {
+            "result": [
+                {
+                    "name": "OCI critical result",
+                    "host": {
+                        "text": "cspmtcenter:25.0.7.B043 (amd64)",
+                        "hostname": "oci://ct-harborv1.devel.greenbone.net/euleros/cspmtcenter:25.0.7.B043"
+                    },
+                    "port": "general/tcp",
+                    "threat": "Critical",
+                    "severity": 10.0,
+                    "oci_image": {
+                        "name": "oci://ct-harborv1.devel.greenbone.net/euleros/cspmtcenter:25.0.7.B043",
+                        "digest": "sha256:106b4220477872c6bc4de04da7f1dfd84211809cf737e72eef7d91f41ab146e9",
+                        "registry": "ct-harborv1.devel.greenbone.net",
+                        "path": "euleros",
+                        "short_name": "cspmtcenter:25.0.7.B043"
+                    }
+                },
+                {
+                    "name": "OCI log result",
+                    "host": {
+                        "text": "cspmtcenter:25.0.7.B043 (amd64)",
+                        "hostname": "oci://ct-harborv1.devel.greenbone.net/euleros/cspmtcenter:25.0.7.B043"
+                    },
+                    "port": "general/tcp",
+                    "threat": "Log",
+                    "severity": 0.0,
+                    "oci_image": {
+                        "name": "oci://ct-harborv1.devel.greenbone.net/euleros/cspmtcenter:25.0.7.B043",
+                        "digest": "sha256:106b4220477872c6bc4de04da7f1dfd84211809cf737e72eef7d91f41ab146e9",
+                        "registry": "ct-harborv1.devel.greenbone.net",
+                        "path": "euleros",
+                        "short_name": "cspmtcenter:25.0.7.B043"
+                    }
+                }
+            ]
+        },
+        "result_count": {
+            "filtered": 2
+        },
+        "host": []
+    }));
+
+    let envelope = report_json_to_envelope(&report_json);
+    let results = envelope.report.results.unwrap();
+
+    assert_eq!(results.result.len(), 2);
+
+    let critical = &results.result[0];
+    assert_eq!(critical.name.as_deref(), Some("OCI critical result"));
+    assert_eq!(critical.threat.as_deref(), Some("Critical"));
+    assert_eq!(critical.severity.as_deref(), Some("10.0"));
+    assert!(critical.oci_image.is_some());
+
+    let log = &results.result[1];
+    assert_eq!(log.name.as_deref(), Some("OCI log result"));
+    assert_eq!(log.threat.as_deref(), Some("Log"));
+    assert_eq!(log.severity.as_deref(), Some("0.0"));
+    assert!(log.oci_image.is_some());
+}

@@ -1,0 +1,103 @@
+// SPDX-FileCopyrightText: 2026 Greenbone AG
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+use axum::extract::DefaultBodyLimit;
+use axum::{
+    Router, middleware,
+    routing::{get, post},
+};
+use tower_http::trace::TraceLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+use crate::api::render_audit;
+use crate::{
+    api::{
+        audit_report_formats, debug, delta_audit_report_formats, delta_report_formats, health,
+        render, report_format,
+    },
+    app::state::AppState,
+    auth::middleware::require_auth,
+    openapi::ApiDoc,
+};
+
+pub fn build_router(state: AppState) -> Router {
+    let public_routes = Router::new()
+        .route("/health/live", get(health::live))
+        .route("/health/ready", get(health::ready));
+
+    let protected_routes = Router::new()
+        .route("/api/v1/ping", get(|| async { "ok" }))
+        .route("/api/v1/sync-ping", get(debug::sync_ping))
+        .route(
+            "/api/v1/report-formats",
+            get(report_format::get_report_formats),
+        )
+        .route(
+            "/api/v1/report-formats/{format_id}",
+            get(report_format::get_report_format),
+        )
+        .route(
+            "/api/v1/report-formats/sync",
+            post(report_format::sync_report_formats),
+        )
+        .route("/api/v1/render", post(render::render))
+        .route("/api/v1/render/xml", post(render::render_xml))
+        .route(
+            "/api/v1/audit-report-formats",
+            get(audit_report_formats::get_audit_report_formats),
+        )
+        .route(
+            "/api/v1/audit-report-formats/{format_id}",
+            get(audit_report_formats::get_audit_report_format),
+        )
+        .route(
+            "/api/v1/audit-report-formats/sync",
+            post(audit_report_formats::sync_audit_report_formats),
+        )
+        .route(
+            "/api/v1/delta-report-formats",
+            get(delta_report_formats::get_delta_report_formats),
+        )
+        .route(
+            "/api/v1/delta-report-formats/{format_id}",
+            get(delta_report_formats::get_delta_report_format),
+        )
+        .route(
+            "/api/v1/delta-report-formats/sync",
+            post(delta_report_formats::sync_delta_report_formats),
+        )
+        .route(
+            "/api/v1/delta-audit-report-formats",
+            get(delta_audit_report_formats::get_delta_audit_report_formats),
+        )
+        .route(
+            "/api/v1/delta-audit-report-formats/{format_id}",
+            get(delta_audit_report_formats::get_delta_audit_report_format),
+        )
+        .route(
+            "/api/v1/delta-audit-report-formats/sync",
+            post(delta_audit_report_formats::sync_delta_audit_report_formats),
+        )
+        .route("/api/v1/render/audit", post(render_audit::render_audit))
+        .route(
+            "/api/v1/render/audit/xml",
+            post(render_audit::render_audit_xml),
+        )
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    let max_body_bytes = state.settings.max_body_bytes;
+
+    Router::new()
+        .merge(public_routes)
+        .merge(protected_routes)
+        .merge(SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .with_state(state)
+        .layer(DefaultBodyLimit::max(max_body_bytes))
+        .layer(TraceLayer::new_for_http())
+}
+
+#[cfg(test)]
+#[path = "router_tests.rs"]
+mod router_tests;
