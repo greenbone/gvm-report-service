@@ -13,6 +13,14 @@ The project focuses on:
 
 ---
 
+## Build status
+
+![Build and Test](https://github.com/greenbone/gvm-report-service/actions/workflows/build-and-test.yml/badge.svg)
+![CodeQL](https://github.com/greenbone/gvm-report-service/actions/workflows/codeql-analysis.yml/badge.svg)
+[![codecov](https://codecov.io/gh/greenbone/gvm-report-service/branch/main/graph/badge.svg)](https://codecov.io/gh/greenbone/gvm-report-service)
+
+---
+
 ## Documentation
 
 - [Environment Variables](./docs/ENVIRONMENT_VARIABLES.md)
