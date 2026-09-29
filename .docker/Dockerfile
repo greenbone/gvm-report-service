@@ -3,8 +3,8 @@ FROM debian:bookworm-slim AS typst
 ARG TARGETARCH
 ARG TYPST_VERSION=0.14.2
 
-ARG TYPST_SHA256_AMD64
-ARG TYPST_SHA256_ARM64
+ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
+ARG TYPST_SHA256_ARM64=491b101aa40a3a7ea82a3f8a6232cabb4e6a7e233810082e5ac812d43fdcd47a
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -27,7 +27,6 @@ RUN case "$TARGETARCH" in \
         exit 1 \
         ;; \
     esac \
-    && test -n "$TYPST_SHA256" \
     && curl -fsSL \
       "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${TYPST_ARCH}.tar.xz" \
       -o /tmp/typst.tar.xz \
