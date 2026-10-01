@@ -3,6 +3,7 @@
 CARGO ?= cargo
 CLI_ARGS ?= --help
 SERVER_ARGS ?=
+INSTALL_PREFIX ?= /usr/local
 
 .PHONY: \
 	help \
@@ -134,6 +135,9 @@ build-release:
 		--workspace \
 		--release \
 		--color always
+
+install:
+	cargo install --path crates/gvm-report-cli --root $(DESTDIR)$(INSTALL_PREFIX)
 
 clean:
 	$(CARGO) clean
