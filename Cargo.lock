@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "gvm-report-cli"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "clap",
  "gvm-report-core",
@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "gvm-report-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "gvm-report-server"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "async-trait",
  "axum",
