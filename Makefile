@@ -21,6 +21,7 @@ INSTALL_PREFIX ?= /usr/local
 	fmt-check \
 	build \
 	build-release \
+    install \
 	clean
 
 help:
@@ -45,6 +46,7 @@ help:
 	@echo ""
 	@echo "  make build          build workspace"
 	@echo "  make build-release  build workspace in release mode"
+	@echo "  make install        install gvm-report-cli to \$(INSTALL_PREFIX)"
 	@echo "  make clean          cargo clean"
 
 check:
