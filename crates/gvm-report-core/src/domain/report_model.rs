@@ -124,14 +124,7 @@ impl InnerReport {
     }
 
     pub fn is_audit_report(&self) -> bool {
-        self.compliance_count.is_some()
-            || self.compliance.is_some()
-            || self.results.as_ref().is_some_and(|results| {
-                results
-                    .result
-                    .iter()
-                    .any(|result| result.compliance.is_some())
-            })
+        self.compliance_count.is_some() || self.compliance.is_some()
     }
 
     pub fn auth_rows(&self) -> Vec<AuthRow> {

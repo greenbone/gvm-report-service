@@ -1318,24 +1318,39 @@ fn report_detects_audit_report_from_compliance_summary() {
 }
 
 #[test]
-fn report_detects_audit_report_from_result_compliance() {
-    let xml = r#"
-        <report id="outer-report-id">
-            <report id="inner-report-id">
-                <results>
-                    <result id="result-1">
-                        <name>Audit check</name>
-                        <compliance>yes</compliance>
-                    </result>
-                </results>
-            </report>
-        </report>
-    "#;
+fn technical_report_with_undefined_compliance_is_not_audit() {
+    let report = InnerReport {
+        results: Some(Results {
+            result: vec![ReportResult {
+                compliance: Some("undefined".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
 
-    let envelope: ReportEnvelope =
-        quick_xml::de::from_str(xml).expect("report envelope should deserialize");
+    assert!(!report.is_audit_report());
+}
 
-    assert!(envelope.report.is_audit_report());
+#[test]
+fn report_with_compliance_count_is_audit() {
+    let report = InnerReport {
+        compliance_count: Some(ComplianceCount::default()),
+        ..Default::default()
+    };
+
+    assert!(report.is_audit_report());
+}
+
+#[test]
+fn report_with_compliance_summary_is_audit() {
+    let report = InnerReport {
+        compliance: Some(ComplianceSummary::default()),
+        ..Default::default()
+    };
+
+    assert!(report.is_audit_report());
 }
 
 #[test]
