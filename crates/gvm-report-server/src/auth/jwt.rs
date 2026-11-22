@@ -37,7 +37,7 @@ pub fn validate_jwt(token: &str, settings: &Settings) -> Result<AuthContext, Api
 
     let token_data = decode::<Claims>(
         token,
-        &DecodingKey::from_secret(secret.as_bytes()),
+        &DecodingKey::from_secret(secret.as_bytes()).unwrap(),
         &validation,
     )
     .map_err(|_| ApiError::unauthorized("Invalid token"))?;
