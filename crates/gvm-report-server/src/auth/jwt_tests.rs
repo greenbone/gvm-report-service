@@ -84,12 +84,9 @@ fn validate_jwt_rejects_wrong_issuer() {
         scopes: None,
     };
 
-    let token = encode(
-        &Header::new(Algorithm::HS256),
-        &claims,
-        &EncodingKey::from_secret(settings.jwt_secret.as_ref().unwrap().as_bytes()),
-    )
-    .unwrap();
+    let secret = settings.jwt_secret.as_ref().unwrap();
+    let key = EncodingKey::from_secret(secret.as_bytes()).unwrap();
+    let token = encode(&Header::default(), &claims, &key).unwrap();
 
     let err = validate_jwt(&token, &settings).unwrap_err();
 
@@ -109,12 +106,9 @@ fn validate_jwt_rejects_wrong_audience() {
         scopes: None,
     };
 
-    let token = encode(
-        &Header::new(Algorithm::HS256),
-        &claims,
-        &EncodingKey::from_secret(settings.jwt_secret.as_ref().unwrap().as_bytes()),
-    )
-    .unwrap();
+    let secret = settings.jwt_secret.as_ref().unwrap();
+    let key = EncodingKey::from_secret(secret.as_bytes()).unwrap();
+    let token = encode(&Header::default(), &claims, &key).unwrap();
 
     let err = validate_jwt(&token, &settings).unwrap_err();
 
@@ -147,7 +141,10 @@ fn test_token(settings: &Settings, scope: Option<String>, scopes: Option<Vec<Str
     encode(
         &Header::new(Algorithm::HS256),
         &claims,
-        &EncodingKey::from_secret(settings.jwt_secret.as_ref().unwrap().as_bytes()),
+        &EncodingKey::from_secret(
+            settings.jwt_secret.as_ref().unwrap().as_bytes(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
